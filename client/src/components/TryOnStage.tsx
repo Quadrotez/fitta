@@ -1,10 +1,11 @@
 /**
- * Style: «Тихий ателье» — настоящая WebGL-сцена с 3D-моделью, Orbit-камерой и локальными текстурными слоями.
- * Решение: одежда лежит на отдельных цилиндрических 3D-поверхностях, а не на вращаемом 2D-изображении.
+ * Style: «Тихий ателье» — автономная WebGL-сцена без сетевых 3D-зависимостей.
+ * Решение: манекен собран из объёмных Three.js-примитивов в устойчивой прямой стойке;
+ * одежда лежит на отдельных цилиндрических 3D-поверхностях, а не на 2D-изображении.
  */
 import { Suspense, useEffect, useRef, useState } from "react";
 import { Canvas, type ThreeEvent } from "@react-three/fiber";
-import { OrbitControls, PerspectiveCamera, useAnimations, useGLTF, useTexture } from "@react-three/drei";
+import { OrbitControls, PerspectiveCamera, useTexture } from "@react-three/drei";
 import * as THREE from "three";
 import type { Garment, GarmentCategory, GarmentOffset } from "@/lib/wardrobe";
 
@@ -23,22 +24,16 @@ type SurfaceConfig = {
   z: number;
 };
 
-/** Зоны одежды не пересекаются: верх расположен на торсе, а низ — ниже линии талии. */
+/** Верх и низ находятся на независимых высотах, чтобы брюки не пересекались с курткой. */
 const surfaces: Record<GarmentCategory, SurfaceConfig> = {
-  top: { position: [0, 0.22, -0.04], radius: 0.42, height: 0.83, arc: 3.85, z: 0.04 },
-  bottom: { position: [0, -0.53, -0.05], radius: 0.33, height: 0.83, arc: 2.9, z: 0.035 },
-  outerwear: { position: [0, 0.19, -0.07], radius: 0.5, height: 0.97, arc: 4.15, z: 0.06 },
-  shoes: { position: [0, -0.88, -0.13], radius: 0.36, height: 0.18, arc: 2.5, z: 0.04 },
-  accessory: { position: [0, 0.74, -0.12], radius: 0.27, height: 0.34, arc: 3.1, z: 0.08 },
+  top: { position: [0, 0.42, 0], radius: 0.43, height: 0.76, arc: 3.9, z: 0.035 },
+  bottom: { position: [0, -0.5, 0], radius: 0.34, height: 0.92, arc: 2.95, z: 0.035 },
+  outerwear: { position: [0, 0.39, 0], radius: 0.51, height: 0.92, arc: 4.18, z: 0.06 },
+  shoes: { position: [0, -1.17, 0.02], radius: 0.35, height: 0.17, arc: 2.55, z: 0.05 },
+  accessory: { position: [0, 0.96, 0], radius: 0.28, height: 0.3, arc: 3.1, z: 0.07 },
 };
 
 const clampOffset = (value: number) => Math.max(-1.25, Math.min(1.25, value));
-/**
- * Vercel не содержит служебный `/manus-storage`, поэтому URL модели должен быть
- * внешним и бинарным. SHA фиксирует версию CC0-исходника и исключает внезапную
- * замену модели в ветке источника.
- */
-const MANNEQUIN_MODEL_URL = "https://raw.githubusercontent.com/met4citizen/TalkingHead/eed58d198076a7e1e825f804802921c4d3804d46/avatars/mpfb.glb";
 
 function useObjectUrl(image: string | Blob) {
   const [url, setUrl] = useState(() => (typeof image === "string" ? image : ""));
@@ -57,50 +52,85 @@ function useObjectUrl(image: string | Blob) {
   return url;
 }
 
-function Mannequin({ bodyMode, dark }: Pick<TryOnStageProps, "bodyMode"> & { dark: boolean }) {
-  const mannequinRef = useRef<THREE.Group>(null);
-  const { scene, animations } = useGLTF(MANNEQUIN_MODEL_URL);
-  const { actions } = useAnimations(animations, mannequinRef);
-  const scale = bodyMode === "slim" ? [0.9, 1.04, 0.9] : bodyMode === "curvy" ? [1.12, 1, 1.1] : [1, 1, 1];
+function MannequinMaterial({ color }: { color: string }) {
+  return <meshStandardMaterial color={color} roughness={0.79} metalness={0.04} />;
+}
 
-  useEffect(() => {
-    const idle = actions.idle;
-    if (!idle) return undefined;
-    idle.reset().play();
-    return () => {
-      idle.stop();
-    };
-  }, [actions]);
+/**
+ * Предсказуемый автономный манекен: человек стоит прямо, руки опущены вдоль корпуса.
+ * Здесь нет GLB, анимаций, скелета или сторонних URL — только настоящие меши WebGL.
+ */
+function PrimitiveMannequin({ bodyMode, dark }: Pick<TryOnStageProps, "bodyMode"> & { dark: boolean }) {
+  const dimensions: [number, number, number] = bodyMode === "slim" ? [0.9, 1.03, 0.9] : bodyMode === "curvy" ? [1.13, 1, 1.11] : [1, 1, 1];
+  const color = dark ? "#73887a" : "#bebbb1";
 
-  useEffect(() => {
-    // MPFB поставляется в A-позе. Руки переводятся в спокойную витринную стойку
-    // в мировом пространстве, поэтому не зависят от локальной ориентации костей.
-    const leftArm = scene.getObjectByName("LeftArm");
-    const rightArm = scene.getObjectByName("RightArm");
-    const poseKey = "fittaBaseQuaternion";
-    [leftArm, rightArm].forEach((arm) => {
-      if (!arm) return;
-      if (!arm.userData[poseKey]) arm.userData[poseKey] = arm.quaternion.clone();
-      arm.quaternion.copy(arm.userData[poseKey] as THREE.Quaternion);
-    });
-    scene.updateMatrixWorld(true);
-    if (leftArm) leftArm.rotateOnWorldAxis(new THREE.Vector3(0, 0, 1), 0.94);
-    if (rightArm) rightArm.rotateOnWorldAxis(new THREE.Vector3(0, 0, 1), -0.94);
-    scene.updateMatrixWorld(true);
+  return (
+    <group scale={dimensions}>
+      {/* Голова и шея */}
+      <mesh position={[0, 1.22, 0.02]} scale={[0.96, 1.12, 0.93]} castShadow receiveShadow>
+        <sphereGeometry args={[0.2, 32, 24]} />
+        <MannequinMaterial color={color} />
+      </mesh>
+      <mesh position={[0, 1.02, 0]} castShadow receiveShadow>
+        <cylinderGeometry args={[0.1, 0.11, 0.16, 24]} />
+        <MannequinMaterial color={color} />
+      </mesh>
 
-    scene.traverse((object) => {
-      if (!(object instanceof THREE.Mesh)) return;
-      object.castShadow = true;
-      object.receiveShadow = true;
-      object.material = new THREE.MeshStandardMaterial({
-        color: dark ? "#637a6e" : "#c8c3b8",
-        roughness: 0.84,
-        metalness: 0.02,
-      });
-    });
-  }, [dark, scene]);
+      {/* Торс с более широкими плечами и узкой талией */}
+      <mesh position={[0, 0.6, 0]} castShadow receiveShadow>
+        <cylinderGeometry args={[0.38, 0.28, 0.78, 32]} />
+        <MannequinMaterial color={color} />
+      </mesh>
+      <mesh position={[0, 0.12, 0]} scale={[1, 0.72, 0.79]} castShadow receiveShadow>
+        <sphereGeometry args={[0.31, 32, 20]} />
+        <MannequinMaterial color={color} />
+      </mesh>
 
-  return <primitive ref={mannequinRef} object={scene} position={[0, -0.95, 0]} scale={scale as [number, number, number]} />;
+      {/* Руки расположены вертикально у корпуса, без A-позы и жестов. */}
+      <mesh position={[-0.47, 0.48, 0]} castShadow receiveShadow>
+        <cylinderGeometry args={[0.085, 0.105, 0.6, 20]} />
+        <MannequinMaterial color={color} />
+      </mesh>
+      <mesh position={[0.47, 0.48, 0]} castShadow receiveShadow>
+        <cylinderGeometry args={[0.085, 0.105, 0.6, 20]} />
+        <MannequinMaterial color={color} />
+      </mesh>
+      <mesh position={[-0.47, -0.11, 0.01]} castShadow receiveShadow>
+        <cylinderGeometry args={[0.07, 0.085, 0.57, 20]} />
+        <MannequinMaterial color={color} />
+      </mesh>
+      <mesh position={[0.47, -0.11, 0.01]} castShadow receiveShadow>
+        <cylinderGeometry args={[0.07, 0.085, 0.57, 20]} />
+        <MannequinMaterial color={color} />
+      </mesh>
+      <mesh position={[-0.47, -0.46, 0.02]} scale={[0.78, 1.35, 0.72]} castShadow receiveShadow>
+        <sphereGeometry args={[0.075, 18, 14]} />
+        <MannequinMaterial color={color} />
+      </mesh>
+      <mesh position={[0.47, -0.46, 0.02]} scale={[0.78, 1.35, 0.72]} castShadow receiveShadow>
+        <sphereGeometry args={[0.075, 18, 14]} />
+        <MannequinMaterial color={color} />
+      </mesh>
+
+      {/* Ноги стоят параллельно, стопы опираются на пол. */}
+      <mesh position={[-0.17, -0.56, 0]} castShadow receiveShadow>
+        <cylinderGeometry args={[0.18, 0.125, 0.96, 24]} />
+        <MannequinMaterial color={color} />
+      </mesh>
+      <mesh position={[0.17, -0.56, 0]} castShadow receiveShadow>
+        <cylinderGeometry args={[0.18, 0.125, 0.96, 24]} />
+        <MannequinMaterial color={color} />
+      </mesh>
+      <mesh position={[-0.17, -1.14, 0.07]} scale={[0.93, 0.48, 1.45]} castShadow receiveShadow>
+        <sphereGeometry args={[0.15, 20, 14]} />
+        <MannequinMaterial color={color} />
+      </mesh>
+      <mesh position={[0.17, -1.14, 0.07]} scale={[0.93, 0.48, 1.45]} castShadow receiveShadow>
+        <sphereGeometry args={[0.15, 20, 14]} />
+        <MannequinMaterial color={color} />
+      </mesh>
+    </group>
+  );
 }
 
 function GarmentSurface({ garment, onOffsetChange, onDragChange }: { garment: Garment; onOffsetChange: (id: string, offset: GarmentOffset) => void; onDragChange: (value: boolean) => void }) {
@@ -127,11 +157,15 @@ function LoadedGarmentSurface({ textureUrl, garment, onOffsetChange, onDragChang
     texture.needsUpdate = true;
   }, [texture]);
 
-  const startMove = (event: ThreeEvent<PointerEvent>) => {
-    event.stopPropagation();
+  const getDragPoint = (event: ThreeEvent<PointerEvent>) => {
     const point = new THREE.Vector3();
     event.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 0, 1), -(config.position[2] + config.z + config.radius)), point);
-    drag.current = { pointerId: event.pointerId, point, offset };
+    return point;
+  };
+
+  const startMove = (event: ThreeEvent<PointerEvent>) => {
+    event.stopPropagation();
+    drag.current = { pointerId: event.pointerId, point: getDragPoint(event), offset };
     (event.target as unknown as { setPointerCapture: (pointerId: number) => void }).setPointerCapture(event.pointerId);
     onDragChange(true);
   };
@@ -140,8 +174,7 @@ function LoadedGarmentSurface({ textureUrl, garment, onOffsetChange, onDragChang
     const activeDrag = drag.current;
     if (!activeDrag || activeDrag.pointerId !== event.pointerId) return;
     event.stopPropagation();
-    const point = new THREE.Vector3();
-    event.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 0, 1), -(config.position[2] + config.z + config.radius)), point);
+    const point = getDragPoint(event);
     onOffsetChange(garment.id, {
       x: clampOffset(activeDrag.offset.x + (point.x - activeDrag.point.x) / 1.15),
       y: clampOffset(activeDrag.offset.y + (point.y - activeDrag.point.y) / 1.35),
@@ -181,17 +214,15 @@ function FittingScene({ activeGarments, bodyMode, theme, onOffsetChange }: TryOn
     <>
       <color attach="background" args={[background]} />
       <fog attach="fog" args={[background, 5, 11]} />
-      <PerspectiveCamera makeDefault position={[0, 0.4, 5.6]} fov={37} />
-      <ambientLight intensity={dark ? 1.6 : 1.35} />
-      <directionalLight position={[4, 6, 5]} intensity={dark ? 2.1 : 2.5} castShadow shadow-mapSize={[1024, 1024]} />
-      <directionalLight position={[-4, 2, -2]} intensity={dark ? 0.65 : 0.45} />
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.98, 0]} receiveShadow>
+      <PerspectiveCamera makeDefault position={[0, 0.22, 5.6]} fov={37} />
+      <ambientLight intensity={dark ? 1.28 : 1.06} />
+      <directionalLight position={[4, 6, 5]} intensity={dark ? 2.1 : 2.35} castShadow shadow-mapSize={[1024, 1024]} />
+      <directionalLight position={[-4, 2, -2]} intensity={dark ? 0.65 : 0.42} />
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -1.28, 0]} receiveShadow>
         <circleGeometry args={[3.7, 64]} />
         <meshStandardMaterial color={floor} roughness={1} />
       </mesh>
-      <Suspense fallback={null}>
-        <Mannequin bodyMode={bodyMode} dark={dark} />
-      </Suspense>
+      <PrimitiveMannequin bodyMode={bodyMode} dark={dark} />
       {Object.values(activeGarments).map((garment) => garment && <GarmentSurface key={garment.id} garment={garment} onOffsetChange={onOffsetChange} onDragChange={setDraggingGarment} />)}
       <OrbitControls
         enabled={!draggingGarment}
@@ -204,7 +235,7 @@ function FittingScene({ activeGarments, bodyMode, theme, onOffsetChange }: TryOn
         maxDistance={12}
         minPolarAngle={0.48}
         maxPolarAngle={2.65}
-        target={[0, 0.35, 0]}
+        target={[0, 0.05, 0]}
       />
     </>
   );
@@ -230,5 +261,3 @@ export default function TryOnStage(props: TryOnStageProps) {
     </div>
   );
 }
-
-useGLTF.preload(MANNEQUIN_MODEL_URL);
