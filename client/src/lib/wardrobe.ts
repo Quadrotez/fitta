@@ -68,12 +68,14 @@ export const categoryMeta: Record<GarmentCategory, { label: string; short: strin
 
 export const categoryOrder: GarmentCategory[] = ["top", "bottom", "outerwear", "shoes", "accessory"];
 
+const svgAsset = (content: string) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(content)}`;
+
 export const DEFAULT_GARMENT_DEFINITIONS: Array<Pick<Garment, "name" | "category" | "image">> = [
-  { name: "Молочная футболка · пример", category: "top", image: "/manus-storage/fitta-default-top_239580a7.png" },
-  { name: "Графитовые брюки · пример", category: "bottom", image: "/manus-storage/fitta-default-bottom_38b70388.png" },
-  { name: "Оливковый бомбер · пример", category: "outerwear", image: "/manus-storage/fitta-default-outerwear_797d129a.png" },
-  { name: "Светлые кеды · пример", category: "shoes", image: "/manus-storage/fitta-default-shoes_339df0e2.png" },
-  { name: "Терракотовая шапка · пример", category: "accessory", image: "/manus-storage/fitta-default-accessory_a339d7ac.png" },
+  { name: "Молочная футболка · пример", category: "top", image: svgAsset(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600"><defs><linearGradient id="t" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#fffdf4"/><stop offset="1" stop-color="#d9ddd5"/></linearGradient></defs><path fill="url(#t)" d="M205 125 120 175 62 270l78 57 45-52v205h230V275l45 52 78-57-58-95-85-50-43 31h-44z"/><path fill="none" stroke="#c9cec5" stroke-width="8" d="M245 130q55 42 110 0"/></svg>`) },
+  { name: "Графитовые брюки · пример", category: "bottom", image: svgAsset(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600"><defs><linearGradient id="p" x1="0" x2="1"><stop stop-color="#232b2b"/><stop offset="1" stop-color="#4a5150"/></linearGradient></defs><path fill="url(#p)" d="M160 74h280l28 174-36 278H295l-17-220-18 220H168l-35-278z"/><path fill="none" stroke="#767c79" stroke-width="7" d="M300 80v226M177 106h246"/></svg>`) },
+  { name: "Оливковый бомбер · пример", category: "outerwear", image: svgAsset(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600"><defs><linearGradient id="b" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#60775d"/><stop offset="1" stop-color="#24392d"/></linearGradient></defs><path fill="url(#b)" d="M205 108 120 155 54 300l91 52 38-71v208h234V281l38 71 91-52-66-145-85-47-48 36h-74z"/><path fill="none" stroke="#b0bfad" stroke-opacity=".45" stroke-width="9" d="M300 120v369M172 459h256M238 108h124"/></svg>`) },
+  { name: "Светлые кеды · пример", category: "shoes", image: svgAsset(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600"><defs><linearGradient id="s" x1="0" x2="1"><stop stop-color="#fffdf8"/><stop offset="1" stop-color="#cbd2ce"/></linearGradient></defs><path fill="url(#s)" stroke="#b5beb9" stroke-width="7" d="M70 335q76 7 150 68l108 78q18 15-5 45H74q-34-7-27-47zM280 335q76 7 150 68l108 78q18 15-5 45H284q-34-7-27-47z"/><path stroke="#87928e" stroke-width="8" d="M120 391h116M330 391h116"/></svg>`) },
+  { name: "Терракотовая шапка · пример", category: "accessory", image: svgAsset(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600"><defs><linearGradient id="h" x1="0" x2="1"><stop stop-color="#c85b3e"/><stop offset="1" stop-color="#7f2f27"/></linearGradient></defs><path fill="url(#h)" d="M128 430V245Q135 87 300 70q165 17 172 175v185z"/><path fill="#9a3c31" d="M112 405h376v95H112z"/><path fill="none" stroke="#e38c69" stroke-opacity=".55" stroke-width="9" d="M177 145v253M236 110v288M300 94v304M364 110v288M423 145v253"/></svg>`) },
 ];
 
 export function makeGarment(file: File, category: GarmentCategory): Garment {
@@ -102,6 +104,14 @@ export function makeDefaultGarments(now = new Date().toISOString()): Garment[] {
     isDefault: true,
     createdAt: now,
   }));
+}
+
+function repairLegacyGarments(value: Garment[]): Garment[] {
+  return value.map((garment) => {
+    if (typeof garment.image !== "string" || !garment.image.startsWith("/manus-storage/")) return garment;
+    const replacement = DEFAULT_GARMENT_DEFINITIONS.find((definition) => definition.category === garment.category)?.image;
+    return replacement ? { ...garment, image: replacement, isDefault: true } : garment;
+  });
 }
 
 function openDatabase(): Promise<IDBDatabase> {
@@ -219,6 +229,9 @@ async function readFallback<T>(key: string, fallback: T): Promise<T> {
     const raw = window.localStorage.getItem(key) ?? window.localStorage.getItem(legacyKeyFor(key));
     if (!raw) return fallback;
     const parsed = JSON.parse(raw) as T;
+    if (key === WARDROBE_STORAGE_KEY && Array.isArray(parsed)) {
+      return repairLegacyGarments(parsed as Garment[]) as T;
+    }
     if (key === USER_MODEL_STORAGE_KEY && parsed && typeof parsed === "object") {
       const model = parsed as unknown as UserModel & { file: string };
       const response = await fetch(model.file);
@@ -234,12 +247,23 @@ export async function loadFromStorage<T>(key: string, fallback: T): Promise<T> {
   if (typeof window !== "undefined" && window.indexedDB) {
     try {
       const existing = await readFromDatabase<T>(key);
-      if (existing !== undefined) return existing;
+      if (existing !== undefined) {
+        if (key === WARDROBE_STORAGE_KEY && Array.isArray(existing)) {
+          const repaired = repairLegacyGarments(existing as Garment[]);
+          const changed = repaired.some((garment, index) => garment.image !== (existing as Garment[])[index]?.image);
+          if (changed) await writeToDatabase(key, repaired as T);
+          return repaired as T;
+        }
+        return existing;
+      }
       const legacy = window.localStorage.getItem(legacyKeyFor(key));
       if (legacy) {
         const migrated = JSON.parse(legacy) as T;
-        await writeToDatabase(key, migrated);
-        return migrated;
+        const repaired = key === WARDROBE_STORAGE_KEY && Array.isArray(migrated)
+          ? repairLegacyGarments(migrated as Garment[]) as T
+          : migrated;
+        await writeToDatabase(key, repaired);
+        return repaired;
       }
     } catch {
       // Firefox private mode and hardened profiles can reject IndexedDB. Use the local fallback below.
