@@ -1,7 +1,7 @@
 /**
  * Style: «Тихий ателье» — асимметричная личная примерочная, спокойная палитра, швейные метки.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Archive,
   ArrowUpRight,
@@ -13,6 +13,7 @@ import {
   RotateCcw,
   Save,
   Shirt,
+  SlidersHorizontal,
   Sparkles,
   Trash2,
   Upload,
@@ -22,6 +23,7 @@ import { toast } from "sonner";
 import TryOnCanvas from "@/components/TryOnCanvas";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Slider } from "@/components/ui/slider";
 import {
   categoryMeta,
   categoryOrder,
@@ -49,7 +51,6 @@ const formatDate = (date: string) =>
   );
 
 export default function Home() {
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [garments, setGarments] = useState<Garment[]>([]);
   const [looks, setLooks] = useState<LookPreset[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<GarmentCategory>("top");
@@ -79,6 +80,7 @@ export default function Home() {
     (garment) => garment.category === selectedCategory,
   );
   const selectedCount = Object.keys(activeGarments).length;
+  const fittingGarment = activeGarments[selectedCategory];
 
   const persistGarments = (nextGarments: Garment[]) => {
     if (!saveToStorage(WARDROBE_STORAGE_KEY, nextGarments)) {
@@ -179,15 +181,43 @@ export default function Home() {
     toast.message("Положение модели сброшено.");
   };
 
+  const updateFit = (axis: "width" | "height", value: number) => {
+    if (!fittingGarment) return;
+    const nextGarments = garments.map((garment) =>
+      garment.id === fittingGarment.id
+        ? {
+            ...garment,
+            fit: {
+              width: garment.fit?.width ?? 100,
+              height: garment.fit?.height ?? 100,
+              [axis]: value,
+            },
+          }
+        : garment,
+    );
+    if (saveToStorage(WARDROBE_STORAGE_KEY, nextGarments)) setGarments(nextGarments);
+  };
+
+  const resetFit = () => {
+    if (!fittingGarment) return;
+    const nextGarments = garments.map((garment) =>
+      garment.id === fittingGarment.id
+        ? { ...garment, fit: { width: 100, height: 100 } }
+        : garment,
+    );
+    if (saveToStorage(WARDROBE_STORAGE_KEY, nextGarments)) {
+      setGarments(nextGarments);
+      toast.message("Размер слоя возвращён к исходному.");
+    }
+  };
+
   return (
     <div className="atelier-shell min-h-screen bg-[#f6f4ef] text-[#1e2522]">
       <header className="flex min-h-[76px] items-center justify-between border-b border-[#d9d8d1] px-5 sm:px-8 lg:px-10">
-        <a className="group flex items-center gap-3" href="/" aria-label="Wardrobe — главная">
-          <span className="brand-mark flex h-11 w-11 items-center justify-center rounded-[10px] border border-[#28614e]/40 bg-[#f8f7f3] p-2 transition-transform duration-200 group-hover:-translate-y-0.5">
-            <img src="/manus-storage/wardrobe-mark_a3bc558d.png" alt="" className="h-full w-full object-contain" />
-          </span>
+        <a className="group flex items-center gap-3" href="/" aria-label="Fitta — главная">
+          <img src="/manus-storage/fitta-logo_f1a4d84a.png" alt="Логотип Fitta" className="h-12 w-12 rounded-full object-cover shadow-[0_4px_12px_rgba(30,37,34,0.12)] transition-transform duration-200 group-hover:-translate-y-0.5" />
           <span className="leading-none">
-            <span className="block text-[19px] font-bold tracking-[-0.08em]">wardrobe<span className="text-[#28614e]">/</span></span>
+            <span className="block text-[19px] font-bold tracking-[-0.08em]">Fitta<span className="text-[#28614e]">/</span></span>
             <span className="mt-1 block font-mono text-[9px] font-medium tracking-[0.16em] text-[#777d77]">PRIVATE FITTING ROOM</span>
           </span>
         </a>
@@ -235,12 +265,15 @@ export default function Home() {
               })}
             </div>
 
-            <input ref={fileInputRef} type="file" accept="image/png,image/jpeg,image/webp" onChange={handleUpload} className="sr-only" />
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={isLoading}
-              className="upload-surface group mb-5 flex min-h-28 w-full flex-col justify-between rounded-[20px] border border-dashed border-[#abc0b0] bg-[#edf3ee] p-4 text-left transition-all hover:-translate-y-0.5 hover:border-[#28614e] hover:bg-[#e7f0e9] disabled:cursor-wait"
-            >
+            <label className={`upload-surface group mb-5 flex min-h-28 w-full flex-col justify-between rounded-[20px] border border-dashed border-[#abc0b0] bg-[#edf3ee] p-4 text-left transition-all hover:-translate-y-0.5 hover:border-[#28614e] hover:bg-[#e7f0e9] ${isLoading ? "cursor-wait opacity-75" : "cursor-pointer"}`}>
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                onChange={handleUpload}
+                disabled={isLoading}
+                className="absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0 disabled:cursor-wait"
+                aria-label={`Добавить ${categoryMeta[selectedCategory].label.toLowerCase()} в гардероб`}
+              />
               <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#28614e] text-white shadow-sm">
                 {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
               </span>
@@ -248,7 +281,7 @@ export default function Home() {
                 <span className="block text-sm font-semibold tracking-[-0.02em]">Добавить {categoryMeta[selectedCategory].label.toLowerCase()}</span>
                 <span className="mt-0.5 block font-mono text-[9px] tracking-[0.04em] text-[#637367]">PNG, JPG, WEBP · ДО 1,8 МБ</span>
               </span>
-            </button>
+            </label>
 
             <div className="scrollbar-soft flex max-h-[310px] flex-col gap-2 overflow-y-auto pr-1">
               {currentGarments.length ? (
@@ -346,7 +379,7 @@ export default function Home() {
                 </div>
                 <div className="absolute bottom-5 left-5 z-[1] max-w-[220px] border-l-2 border-[#28614e] bg-[#f8f7f2]/82 p-3.5 backdrop-blur-sm">
                   <p className="font-mono text-[9px] font-medium tracking-[0.1em] text-[#28614e]">ПРЕДПРОСМОТР СЛОЁВ</p>
-                  <p className="mt-1 text-xs leading-5 text-[#5d665e]">Потяни за модель, чтобы посмотреть на силуэт с другого угла.</p>
+                  <p className="mt-1 text-xs leading-5 text-[#5d665e]">Колёсико — масштаб. Потяни модель, чтобы сменить ракурс.</p>
                 </div>
                 <TryOnCanvas activeGarments={activeGarments} bodyMode={bodyMode} sceneKey={sceneKey} />
               </div>
@@ -367,6 +400,39 @@ export default function Home() {
                       </button>
                     ))}
                   </div>
+                </div>
+
+                <div className="paper-tag rounded-[13px] border border-[#d8d8d1] bg-[#fbfaf7]/80 p-5">
+                  <div className="mb-4 flex items-center justify-between">
+                    <div>
+                      <p className="font-mono text-[10px] font-medium tracking-[0.12em] text-[#747b74]">ПОДГОНКА СЛОЯ</p>
+                      <p className="mt-1 truncate text-sm font-bold tracking-[-0.025em]">{fittingGarment?.name || "Выбери вещь"}</p>
+                    </div>
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#eaf0eb] text-[#28614e]"><SlidersHorizontal className="h-4 w-4" /></span>
+                  </div>
+                  {fittingGarment ? (
+                    <div className="space-y-4">
+                      <div>
+                        <div className="mb-2 flex items-center justify-between font-mono text-[9px] font-medium tracking-[0.09em] text-[#667067]">
+                          <span>ШИРИНА</span>
+                          <span className="text-[#28614e]">{fittingGarment.fit?.width ?? 100}%</span>
+                        </div>
+                        <Slider value={[fittingGarment.fit?.width ?? 100]} onValueChange={([value]) => updateFit("width", value)} min={60} max={170} step={1} aria-label="Растянуть одежду по ширине" />
+                      </div>
+                      <div>
+                        <div className="mb-2 flex items-center justify-between font-mono text-[9px] font-medium tracking-[0.09em] text-[#667067]">
+                          <span>ВЫСОТА</span>
+                          <span className="text-[#28614e]">{fittingGarment.fit?.height ?? 100}%</span>
+                        </div>
+                        <Slider value={[fittingGarment.fit?.height ?? 100]} onValueChange={([value]) => updateFit("height", value)} min={60} max={170} step={1} aria-label="Растянуть одежду по высоте" />
+                      </div>
+                      <button onClick={resetFit} className="flex items-center gap-1.5 font-mono text-[9px] font-medium tracking-[0.07em] text-[#6d766e] transition-colors hover:text-[#28614e]">
+                        <RotateCcw className="h-3 w-3" /> СБРОСИТЬ ПОДГОНКУ
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="text-xs leading-5 text-[#747a73]">Добавь вещь или выбери её в библиотеке. Здесь можно вручную растянуть слой по форме манекена.</p>
+                  )}
                 </div>
 
                 <div className="paper-tag rounded-[13px] border border-[#d8d8d1] bg-[#fbfaf7]/80 p-5">
@@ -411,7 +477,7 @@ export default function Home() {
 
             <div className="mt-4 flex flex-wrap items-center justify-between gap-3 font-mono text-[9px] tracking-[0.065em] text-[#798078]">
               <span className="flex items-center gap-1.5"><Sparkles className="h-3.5 w-3.5 text-[#28614e]" /> ПРИМЕРКА РАБОТАЕТ ЛОКАЛЬНО</span>
-              <span className="flex items-center gap-1">ЭТО ВИЗУАЛЬНЫЙ ЭСКИЗ, НЕ ТОЧНАЯ СИМУЛЯЦИЯ ПОСАДКИ <ArrowUpRight className="h-3 w-3" /></span>
+              <span className="flex items-center gap-1">КОЛЁСИКО — МАСШТАБ · РЕГУЛЯТОРЫ — РУЧНАЯ ПОДГОНКА <ArrowUpRight className="h-3 w-3" /></span>
             </div>
           </div>
         </section>

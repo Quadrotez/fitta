@@ -45,6 +45,8 @@ button:focus-visible, input:focus-visible { outline: 2px solid #28614e; outline-
   background-image: radial-gradient(circle at 75% 20%, rgba(40, 97, 78, 0.035), transparent 23rem), linear-gradient(90deg, transparent 0, transparent calc(100% - 20px), rgba(75, 86, 78, 0.11) calc(100% - 20px), rgba(75, 86, 78, 0.11) calc(100% - 19px), transparent calc(100% - 19px));
 }
 
+.upload-surface { position: relative; }
+
 .canvas-frame::after {
   position: absolute;
   inset: 0;

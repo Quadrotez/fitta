@@ -13,6 +13,10 @@ export interface Garment {
   name: string;
   category: GarmentCategory;
   image: string;
+  fit?: {
+    width: number;
+    height: number;
+  };
   createdAt: string;
 }
 
@@ -78,6 +82,7 @@ export function makeGarment(
     name: withoutExtension || "Новая вещь",
     category,
     image,
+    fit: { width: 100, height: 100 },
     createdAt: new Date().toISOString(),
   };
 }
@@ -100,4 +105,3 @@ export function saveToStorage<T>(key: string, value: T): boolean {
     return false;
   }
 }
-

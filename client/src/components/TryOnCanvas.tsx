@@ -30,12 +30,14 @@ const garmentScale: Record<GarmentCategory, [number, number]> = {
 };
 
 function GarmentLayer({ garment }: { garment: Garment }) {
+  const fit = garment.fit ?? { width: 100, height: 100 };
+  const [baseWidth, baseHeight] = garmentScale[garment.category];
   return (
     <Image
       key={garment.id}
       url={garment.image}
       position={garmentPosition[garment.category]}
-      scale={garmentScale[garment.category]}
+      scale={[(baseWidth * fit.width) / 100, (baseHeight * fit.height) / 100]}
       transparent
       opacity={0.97}
       side={THREE.DoubleSide}
@@ -131,7 +133,10 @@ function Scene({ activeGarments, bodyMode }: Omit<TryOnCanvasProps, "sceneKey">)
       </mesh>
       <OrbitControls
         enablePan={false}
-        enableZoom={false}
+        enableZoom
+        zoomSpeed={0.72}
+        minDistance={4.8}
+        maxDistance={10.5}
         minPolarAngle={Math.PI / 2.9}
         maxPolarAngle={Math.PI / 2.05}
         minAzimuthAngle={-0.65}

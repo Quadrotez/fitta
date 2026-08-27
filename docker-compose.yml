@@ -1,5 +1,5 @@
 services:
-  wardrobe:
+  fitta:
     build:
       context: .
       dockerfile: Dockerfile
@@ -9,4 +9,3 @@ services:
       NODE_ENV: production
       PORT: 3000
     restart: unless-stopped
-
