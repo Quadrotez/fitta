@@ -148,6 +148,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid #28614e; outline-
 .dark .atelier-shell .border-\[\#d5d7d1\],
 .dark .atelier-shell .border-\[\#dfded8\] { border-color: #334039 !important; }
 .dark .canvas-frame::after { background-image: linear-gradient(rgba(167, 192, 176, 0.055) 1px, transparent 1px), linear-gradient(90deg, rgba(167, 192, 176, 0.055) 1px, transparent 1px); }
+.dark .flat-stack-stage .flat-grid { background-image: linear-gradient(rgba(151, 194, 167, 0.095) 1px, transparent 1px), linear-gradient(90deg, rgba(151, 194, 167, 0.095) 1px, transparent 1px); }
 .dark .canvas-frame:fullscreen { background: #202924; }
 .dark .canvas-frame::before { color: rgba(205, 220, 209, 0.38); }
 

@@ -10,6 +10,7 @@ const LEGACY_LOOKS_STORAGE_KEY = "wardrobe-tryon:looks";
 const DATABASE_NAME = "fitta-local-wardrobe";
 const DATABASE_VERSION = 1;
 const STORE_NAME = "workspace";
+const pendingWrites = new Map<string, Promise<void>>();
 
 export type GarmentCategory = "top" | "bottom" | "outerwear" | "shoes" | "accessory";
 
@@ -167,10 +168,15 @@ export async function loadFromStorage<T>(key: string, fallback: T): Promise<T> {
 }
 
 export async function saveToStorage<T>(key: string, value: T): Promise<boolean> {
+  const previousWrite = pendingWrites.get(key) ?? Promise.resolve();
+  const nextWrite = previousWrite.catch(() => undefined).then(() => writeToDatabase(key, value));
+  pendingWrites.set(key, nextWrite);
   try {
-    await writeToDatabase(key, value);
+    await nextWrite;
     return true;
   } catch {
     return false;
+  } finally {
+    if (pendingWrites.get(key) === nextWrite) pendingWrites.delete(key);
   }
 }

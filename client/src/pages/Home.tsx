@@ -82,6 +82,7 @@ export default function Home() {
   const [isEditing, setIsEditing] = useState(false);
   const [sceneKey, setSceneKey] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
+  const [isStorageReady, setIsStorageReady] = useState(false);
   const [presetName, setPresetName] = useState("");
   const [isFullscreen, setIsFullscreen] = useState(false);
   const stageFrameRef = useRef<HTMLDivElement>(null);
@@ -92,11 +93,15 @@ export default function Home() {
     void Promise.all([
       loadFromStorage<Garment[]>(WARDROBE_STORAGE_KEY, []),
       loadFromStorage<LookPreset[]>(LOOKS_STORAGE_KEY, []),
-    ]).then(([storedGarments, storedLooks]) => {
-      if (!isMounted) return;
-      setGarments(storedGarments);
-      setLooks(storedLooks);
-    });
+    ])
+      .then(([storedGarments, storedLooks]) => {
+        if (!isMounted) return;
+        setGarments(storedGarments);
+        setLooks(storedLooks);
+      })
+      .finally(() => {
+        if (isMounted) setIsStorageReady(true);
+      });
     return () => { isMounted = false; };
   }, []);
 
@@ -146,6 +151,7 @@ export default function Home() {
       return;
     }
 
+    if (!isStorageReady) return;
     setIsLoading(true);
     try {
       const newGarment = makeGarment(file, selectedCategory);
@@ -391,16 +397,16 @@ export default function Home() {
                 type="file"
                 accept="image/png,image/jpeg,image/webp"
                 onChange={handleUpload}
-                disabled={isLoading}
+                disabled={isLoading || !isStorageReady}
                 className="absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0 disabled:cursor-wait"
                 aria-label={`Добавить ${categoryMeta[selectedCategory].label.toLowerCase()} в гардероб`}
               />
               <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#28614e] text-white shadow-sm">
-                {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                {isLoading || !isStorageReady ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
               </span>
               <span>
                 <span className="block text-sm font-semibold tracking-[-0.02em]">Добавить {categoryMeta[selectedCategory].label.toLowerCase()}</span>
-                <span className="mt-0.5 block font-mono text-[9px] tracking-[0.04em] text-[#637367]">PNG, JPG, WEBP · ДО 12 МБ</span>
+                <span className="mt-0.5 block font-mono text-[9px] tracking-[0.04em] text-[#637367]">{isStorageReady ? "PNG, JPG, WEBP · ДО 12 МБ" : "ЗАГРУЖАЮ ЛОКАЛЬНЫЙ ГАРДЕРОБ"}</span>
               </span>
             </label>
 
@@ -443,8 +449,8 @@ export default function Home() {
               <div className="mb-3 flex items-center justify-between gap-2">
                 <p className="font-mono text-[10px] font-medium tracking-[0.13em] text-[#767b74]">02 — ОБРАЗЫ</p>
                 <div className="flex items-center gap-2">
-                  <input ref={importInputRef} type="file" accept="application/json,.json" onChange={importLook} className="hidden" aria-label="Импортировать образ Fitta" />
-                  <button onClick={() => importInputRef.current?.click()} className="flex h-7 items-center gap-1 rounded-md px-1.5 font-mono text-[8px] font-medium tracking-[0.04em] text-[#556157] transition-colors hover:bg-[#eaf0eb] hover:text-[#28614e]" title="Импортировать образ"><FileUp className="h-3.5 w-3.5" /> ИМПОРТ</button>
+                  <input ref={importInputRef} type="file" accept="application/json,.json" onChange={importLook} disabled={!isStorageReady} className="hidden" aria-label="Импортировать образ Fitta" />
+                  <button onClick={() => importInputRef.current?.click()} disabled={!isStorageReady} className="flex h-7 items-center gap-1 rounded-md px-1.5 font-mono text-[8px] font-medium tracking-[0.04em] text-[#556157] transition-colors hover:bg-[#eaf0eb] hover:text-[#28614e] disabled:cursor-not-allowed disabled:opacity-45" title="Импортировать образ"><FileUp className="h-3.5 w-3.5" /> ИМПОРТ</button>
                   <span className="font-mono text-[10px] text-[#767b74]">{looks.length}/12</span>
                 </div>
               </div>
@@ -505,7 +511,7 @@ export default function Home() {
             <div className="relative grid flex-1 gap-5 xl:grid-cols-[minmax(0,1fr)_230px]">
               <div ref={stageFrameRef} className="canvas-frame relative min-h-[500px] overflow-hidden rounded-[16px] border border-[#cfd3cc] bg-[#f1efe9] shadow-[0_12px_28px_rgba(44,54,48,0.06)]">
                 {isFullscreen && <button onClick={() => void toggleFullscreen()} className="absolute right-5 top-5 z-30 flex h-10 w-10 items-center justify-center rounded-full border border-[#d5d7d1] bg-[#fbfaf7]/90 text-[#445047] shadow-sm backdrop-blur-sm" aria-label="Закрыть полноэкранный режим" title="Закрыть полноэкранный режим"><Minimize2 className="h-4 w-4" /></button>}
-                {viewMode === "mannequin" ? <TryOnStage key={sceneKey} activeGarments={activeGarments} bodyMode={bodyMode} theme={theme} onOffsetChange={updateOffset} /> : <FlatStackStage key={sceneKey} activeGarments={activeGarments} editingGarmentId={isEditing ? fittingGarment?.id : undefined} onWarpChange={updateWarp} onOffsetChange={updateOffset} />}
+                {viewMode === "mannequin" ? <TryOnStage key={sceneKey} activeGarments={activeGarments} bodyMode={bodyMode} theme={theme} onOffsetChange={updateOffset} /> : <FlatStackStage key={sceneKey} activeGarments={activeGarments} editingGarmentId={isEditing ? fittingGarment?.id : undefined} theme={theme} onWarpChange={updateWarp} onOffsetChange={updateOffset} />}
               </div>
 
               <div className="flex flex-col gap-4">
@@ -587,7 +593,7 @@ export default function Home() {
                 <Input value={presetName} onChange={(event) => setPresetName(event.target.value)} maxLength={38} placeholder="Название образа (необязательно)" className="h-10 border-0 bg-transparent px-0 text-sm font-semibold shadow-none placeholder:text-[#949992] focus-visible:ring-0" aria-label="Название сохраняемого образа" />
               </div>
               <Button onClick={exportCurrentLook} disabled={!selectedCount} variant="outline" className="h-11 rounded-full border-[#b5c6b8] bg-transparent px-4 text-xs font-bold text-[#28614e] hover:bg-[#eaf0eb] disabled:opacity-40"><Download className="mr-2 h-4 w-4" />Экспорт</Button>
-              <Button onClick={saveLook} className="h-11 rounded-full bg-[#28614e] px-5 text-xs font-bold text-white shadow-[0_8px_18px_rgba(40,97,78,0.18)] transition-all hover:-translate-y-0.5 hover:bg-[#1f4f3f] active:scale-[0.97]">
+              <Button onClick={saveLook} disabled={!isStorageReady} className="h-11 rounded-full bg-[#28614e] px-5 text-xs font-bold text-white shadow-[0_8px_18px_rgba(40,97,78,0.18)] transition-all hover:-translate-y-0.5 hover:bg-[#1f4f3f] active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-45">
                 <Save className="mr-2 h-4 w-4" />
                 Сохранить образ
               </Button>
