@@ -6,6 +6,7 @@ import { nanoid } from "nanoid";
 
 export const WARDROBE_STORAGE_KEY = "garments";
 export const LOOKS_STORAGE_KEY = "looks";
+export const WORKSPACE_STORAGE_KEY = "lookboard-workspace-v1";
 export const DEFAULTS_SEEDED_STORAGE_KEY = "defaults-seeded-v2";
 const LEGACY_WARDROBE_STORAGE_KEY = "wardrobe-tryon:garments";
 const LEGACY_LOOKS_STORAGE_KEY = "wardrobe-tryon:looks";
@@ -34,6 +35,7 @@ export interface Garment {
   fit?: { width: number; height: number };
   offset?: GarmentOffset;
   warp?: WarpPoint[];
+  favorite?: boolean;
   isDefault?: boolean;
   createdAt: string;
 }
@@ -44,6 +46,32 @@ export interface LookPreset {
   garmentIds: string[];
   createdAt: string;
   isDefault?: boolean;
+  layers?: BoardLayer[];
+  board?: Pick<LookboardWorkspace, "zoom" | "guide">;
+}
+
+export interface BoardLayer {
+  id: string;
+  garmentId: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation: number;
+  opacity: number;
+  zIndex: number;
+  visible: boolean;
+  locked: boolean;
+  warp: WarpPoint[];
+}
+
+export type LookboardGuide = "grid" | "quiet" | "measure";
+
+export interface LookboardWorkspace {
+  layers: BoardLayer[];
+  selectedLayerId?: string;
+  zoom: number;
+  guide: LookboardGuide;
 }
 
 export const categoryMeta: Record<GarmentCategory, { label: string; short: string; color: string; dot: string }> = {
@@ -55,6 +83,37 @@ export const categoryMeta: Record<GarmentCategory, { label: string; short: strin
 };
 
 export const categoryOrder: GarmentCategory[] = ["top", "bottom", "outerwear", "shoes", "accessory"];
+
+export const defaultPlacement: Record<GarmentCategory, Pick<BoardLayer, "x" | "y" | "width" | "height">> = {
+  top: { x: 50, y: 42, width: 58, height: 48 },
+  bottom: { x: 51, y: 66, width: 48, height: 55 },
+  outerwear: { x: 49, y: 42, width: 66, height: 55 },
+  shoes: { x: 50, y: 81, width: 58, height: 20 },
+  accessory: { x: 52, y: 17, width: 20, height: 19 },
+};
+
+export function makeBoardLayer(garment: Garment, zIndex = 10): BoardLayer {
+  return {
+    id: nanoid(10),
+    garmentId: garment.id,
+    ...defaultPlacement[garment.category],
+    rotation: 0,
+    opacity: 100,
+    zIndex,
+    visible: true,
+    locked: false,
+    warp: (garment.warp ?? DEFAULT_WARP_POINTS).map((point) => ({ ...point })),
+  };
+}
+
+export function makeLayersFromGarmentIds(garmentIds: string[], garments: Garment[]): BoardLayer[] {
+  return garmentIds
+    .map((garmentId, index) => {
+      const garment = garments.find((item) => item.id === garmentId);
+      return garment ? makeBoardLayer(garment, 10 + index) : undefined;
+    })
+    .filter((layer): layer is BoardLayer => Boolean(layer));
+}
 
 const svgAsset = (content: string) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(content)}`;
 
@@ -278,4 +337,3 @@ export async function saveToStorage<T>(key: string, value: T): Promise<boolean> 
     if (pendingWrites.get(key) === nextWrite) pendingWrites.delete(key);
   }
 }
-
