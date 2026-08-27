@@ -58,6 +58,13 @@ button:focus-visible, input:focus-visible { outline: 2px solid #28614e; outline-
   mask-image: linear-gradient(to bottom, rgba(0,0,0,.68), transparent 90%);
 }
 .canvas-frame canvas { position: relative; z-index: 0; }
+.flat-grid {
+  background-image: linear-gradient(rgba(40, 97, 78, 0.045) 1px, transparent 1px), linear-gradient(90deg, rgba(40, 97, 78, 0.045) 1px, transparent 1px);
+  background-size: 28px 28px;
+  mask-image: radial-gradient(ellipse at center, black 14%, transparent 72%);
+}
+.warp-point { touch-action: none; cursor: grab; }
+.warp-point:active { cursor: grabbing; transform: translate(-50%, -50%) scale(0.92); }
 .paper-tag {
   background-image: linear-gradient(90deg, rgba(40, 97, 78, 0.26) 0 22px, transparent 22px), radial-gradient(circle at 12px 12px, rgba(40, 97, 78, 0.35) 0 1px, transparent 1.5px);
   background-size: 100% 1px, 100% 100%;

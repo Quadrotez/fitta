@@ -7,8 +7,10 @@ import {
   ArrowUpRight,
   CircleHelp,
   FolderArchive,
+  Layers3,
   Loader2,
   Maximize2,
+  Pencil,
   Plus,
   RotateCcw,
   Save,
@@ -20,7 +22,9 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "sonner";
-import TryOnCanvas from "@/components/TryOnCanvas";
+import TryOnStage from "@/components/TryOnStage";
+import FlatStackStage from "@/components/FlatStackStage";
+import GarmentPreview from "@/components/GarmentPreview";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
@@ -35,15 +39,8 @@ import {
   type Garment,
   type GarmentCategory,
   type LookPreset,
+  type WarpPoint,
 } from "@/lib/wardrobe";
-
-const readFile = (file: File) =>
-  new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(new Error("Не удалось прочитать файл"));
-    reader.readAsDataURL(file);
-  });
 
 const formatDate = (date: string) =>
   new Intl.DateTimeFormat("ru-RU", { day: "2-digit", month: "short" }).format(
@@ -56,13 +53,23 @@ export default function Home() {
   const [selectedCategory, setSelectedCategory] = useState<GarmentCategory>("top");
   const [selectedIds, setSelectedIds] = useState<Partial<Record<GarmentCategory, string>>>({});
   const [bodyMode, setBodyMode] = useState<"standard" | "slim" | "curvy">("standard");
+  const [viewMode, setViewMode] = useState<"mannequin" | "flat">("mannequin");
+  const [isEditing, setIsEditing] = useState(false);
   const [sceneKey, setSceneKey] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [presetName, setPresetName] = useState("");
 
   useEffect(() => {
-    setGarments(loadFromStorage<Garment[]>(WARDROBE_STORAGE_KEY, []));
-    setLooks(loadFromStorage<LookPreset[]>(LOOKS_STORAGE_KEY, []));
+    let isMounted = true;
+    void Promise.all([
+      loadFromStorage<Garment[]>(WARDROBE_STORAGE_KEY, []),
+      loadFromStorage<LookPreset[]>(LOOKS_STORAGE_KEY, []),
+    ]).then(([storedGarments, storedLooks]) => {
+      if (!isMounted) return;
+      setGarments(storedGarments);
+      setLooks(storedLooks);
+    });
+    return () => { isMounted = false; };
   }, []);
 
   const activeGarments = useMemo(() => {
@@ -82,9 +89,9 @@ export default function Home() {
   const selectedCount = Object.keys(activeGarments).length;
   const fittingGarment = activeGarments[selectedCategory];
 
-  const persistGarments = (nextGarments: Garment[]) => {
-    if (!saveToStorage(WARDROBE_STORAGE_KEY, nextGarments)) {
-      toast.error("Не хватает места в браузере. Удали несколько крупных фото.");
+  const persistGarments = async (nextGarments: Garment[]) => {
+    if (!(await saveToStorage(WARDROBE_STORAGE_KEY, nextGarments))) {
+      toast.error("Не удалось сохранить библиотеку в IndexedDB. Проверь настройки хранилища браузера.");
       return false;
     }
     setGarments(nextGarments);
@@ -100,17 +107,16 @@ export default function Home() {
       toast.error("Нужен файл изображения: PNG, JPG или WEBP.");
       return;
     }
-    if (file.size > 1_800_000) {
-      toast.error("Выбери изображение до 1,8 МБ — так localStorage останется свободнее.");
+    if (file.size > 12_000_000) {
+      toast.error("Выбери изображение до 12 МБ, чтобы редактор работал без тормозов.");
       return;
     }
 
     setIsLoading(true);
     try {
-      const image = await readFile(file);
-      const newGarment = makeGarment(file, image, selectedCategory);
+      const newGarment = makeGarment(file, selectedCategory);
       const nextGarments = [newGarment, ...garments];
-      if (persistGarments(nextGarments)) {
+      if (await persistGarments(nextGarments)) {
         setSelectedIds((current) => ({ ...current, [selectedCategory]: newGarment.id }));
         toast.success("Вещь добавлена в локальный гардероб.");
       }
@@ -125,9 +131,9 @@ export default function Home() {
     setSelectedIds((current) => ({ ...current, [garment.category]: garment.id }));
   };
 
-  const removeGarment = (garment: Garment) => {
+  const removeGarment = async (garment: Garment) => {
     const nextGarments = garments.filter((item) => item.id !== garment.id);
-    if (persistGarments(nextGarments)) {
+    if (await persistGarments(nextGarments)) {
       setSelectedIds((current) => {
         const next = { ...current };
         if (next[garment.category] === garment.id) delete next[garment.category];
@@ -137,7 +143,7 @@ export default function Home() {
     }
   };
 
-  const saveLook = () => {
+  const saveLook = async () => {
     const garmentIds = Object.values(selectedIds).filter(Boolean) as string[];
     if (!garmentIds.length) {
       toast.error("Сначала выбери хотя бы одну вещь.");
@@ -150,8 +156,8 @@ export default function Home() {
       createdAt: new Date().toISOString(),
     };
     const nextLooks = [look, ...looks].slice(0, 12);
-    if (!saveToStorage(LOOKS_STORAGE_KEY, nextLooks)) {
-      toast.error("Не удалось сохранить образ. Освободи место в браузере.");
+    if (!(await saveToStorage(LOOKS_STORAGE_KEY, nextLooks))) {
+      toast.error("Не удалось сохранить образ в IndexedDB.");
       return;
     }
     setLooks(nextLooks);
@@ -169,9 +175,9 @@ export default function Home() {
     toast.success(`Открыт образ «${look.name}».`);
   };
 
-  const deleteLook = (id: string) => {
+  const deleteLook = async (id: string) => {
     const nextLooks = looks.filter((look) => look.id !== id);
-    if (saveToStorage(LOOKS_STORAGE_KEY, nextLooks)) {
+    if (await saveToStorage(LOOKS_STORAGE_KEY, nextLooks)) {
       setLooks(nextLooks);
     }
   };
@@ -195,7 +201,8 @@ export default function Home() {
           }
         : garment,
     );
-    if (saveToStorage(WARDROBE_STORAGE_KEY, nextGarments)) setGarments(nextGarments);
+    setGarments(nextGarments);
+    void saveToStorage(WARDROBE_STORAGE_KEY, nextGarments);
   };
 
   const resetFit = () => {
@@ -205,17 +212,22 @@ export default function Home() {
         ? { ...garment, fit: { width: 100, height: 100 } }
         : garment,
     );
-    if (saveToStorage(WARDROBE_STORAGE_KEY, nextGarments)) {
-      setGarments(nextGarments);
-      toast.message("Размер слоя возвращён к исходному.");
-    }
+    setGarments(nextGarments);
+    void saveToStorage(WARDROBE_STORAGE_KEY, nextGarments);
+    toast.message("Размер слоя возвращён к исходному.");
+  };
+
+  const updateWarp = (garmentId: string, warp: WarpPoint[]) => {
+    const nextGarments = garments.map((garment) => garment.id === garmentId ? { ...garment, warp } : garment);
+    setGarments(nextGarments);
+    void saveToStorage(WARDROBE_STORAGE_KEY, nextGarments);
   };
 
   return (
     <div className="atelier-shell min-h-screen bg-[#f6f4ef] text-[#1e2522]">
       <header className="flex min-h-[76px] items-center justify-between border-b border-[#d9d8d1] px-5 sm:px-8 lg:px-10">
         <a className="group flex items-center gap-3" href="/" aria-label="Fitta — главная">
-          <img src="/manus-storage/fitta-logo_f1a4d84a.png" alt="Логотип Fitta" className="h-12 w-12 rounded-full object-cover shadow-[0_4px_12px_rgba(30,37,34,0.12)] transition-transform duration-200 group-hover:-translate-y-0.5" />
+          <img src="https://raw.githubusercontent.com/Quadrotez/fitta/master/branding/fitta-logo.png" alt="Логотип Fitta" className="h-12 w-12 rounded-full object-cover shadow-[0_4px_12px_rgba(30,37,34,0.12)] transition-transform duration-200 group-hover:-translate-y-0.5" />
           <span className="leading-none">
             <span className="block text-[19px] font-bold tracking-[-0.08em]">Fitta<span className="text-[#28614e]">/</span></span>
             <span className="mt-1 block font-mono text-[9px] font-medium tracking-[0.16em] text-[#777d77]">PRIVATE FITTING ROOM</span>
@@ -279,7 +291,7 @@ export default function Home() {
               </span>
               <span>
                 <span className="block text-sm font-semibold tracking-[-0.02em]">Добавить {categoryMeta[selectedCategory].label.toLowerCase()}</span>
-                <span className="mt-0.5 block font-mono text-[9px] tracking-[0.04em] text-[#637367]">PNG, JPG, WEBP · ДО 1,8 МБ</span>
+                <span className="mt-0.5 block font-mono text-[9px] tracking-[0.04em] text-[#637367]">PNG, JPG, WEBP · ДО 12 МБ</span>
               </span>
             </label>
 
@@ -294,7 +306,7 @@ export default function Home() {
                     >
                       <button onClick={() => selectGarment(garment)} className="flex min-w-0 flex-1 items-center gap-3 text-left" aria-label={`Выбрать ${garment.name}`}>
                         <span className="h-14 w-12 shrink-0 overflow-hidden rounded-xl bg-[#e8e7e1]">
-                          <img src={garment.image} alt="" className="h-full w-full object-cover" />
+                          <GarmentPreview image={garment.image} alt="" className="h-full w-full object-cover" />
                         </span>
                         <span className="min-w-0">
                           <span className="block truncate text-sm font-semibold tracking-[-0.015em]">{garment.name}</span>
@@ -349,7 +361,7 @@ export default function Home() {
         </aside>
 
         <section className="relative min-h-[670px] overflow-hidden px-5 py-6 sm:px-8 sm:py-8 lg:px-9 xl:px-12">
-          <div className="absolute bottom-0 right-0 top-0 hidden w-[39%] bg-[url('/manus-storage/atelier-fitting-room_91ba3495.jpg')] bg-cover bg-center opacity-[0.055] lg:block" />
+          <div className="absolute bottom-0 right-0 top-0 hidden w-[39%] bg-[radial-gradient(circle_at_65%_35%,rgba(40,97,78,0.12),transparent_28%),linear-gradient(145deg,transparent_32%,rgba(40,97,78,0.05)_32%,rgba(40,97,78,0.05)_33%,transparent_33%)] lg:block" />
           <div className="absolute left-5 top-[170px] hidden origin-top-left -rotate-90 font-mono text-[9px] tracking-[0.17em] text-[#8c928c] xl:block">FORM_001 · FIT STUDY</div>
           <div className="relative z-10 mx-auto flex h-full max-w-[1180px] flex-col">
             <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
@@ -361,6 +373,14 @@ export default function Home() {
                 <h2 className="text-[clamp(28px,3vw,42px)] font-bold leading-none tracking-[-0.065em]">Сцена образа <span className="font-mono text-sm font-medium tracking-normal text-[#6f7870]">/ 01</span></h2>
               </div>
               <div className="flex items-center gap-2">
+                <div className="flex rounded-full border border-[#d5d7d1] bg-[#fbfaf7]/80 p-1">
+                  <button onClick={() => setViewMode("mannequin")} className={`rounded-full px-3 py-1.5 font-mono text-[9px] font-medium tracking-[0.06em] transition-colors ${viewMode === "mannequin" ? "bg-[#28614e] text-white" : "text-[#6d766e] hover:text-[#28614e]"}`}>МАНЕКЕН</button>
+                  <button onClick={() => setViewMode("flat")} className={`flex items-center gap-1 rounded-full px-3 py-1.5 font-mono text-[9px] font-medium tracking-[0.06em] transition-colors ${viewMode === "flat" ? "bg-[#28614e] text-white" : "text-[#6d766e] hover:text-[#28614e]"}`}><Layers3 className="h-3 w-3" /> 2D</button>
+                </div>
+                <button onClick={() => setIsEditing((editing) => !editing)} disabled={!fittingGarment} className={`flex h-10 items-center gap-2 rounded-full border px-4 text-xs font-semibold transition-colors ${isEditing ? "border-[#28614e] bg-[#28614e] text-white" : "border-[#d5d7d1] bg-[#fbfaf7]/80 text-[#445047] hover:bg-white"} disabled:cursor-not-allowed disabled:opacity-45`} title="Редактировать активный слой">
+                  <Pencil className="h-3.5 w-3.5" />
+                  {isEditing ? "Готово" : "Править"}
+                </button>
                 <Button onClick={resetScene} variant="outline" className="h-10 gap-2 rounded-full border-[#d5d7d1] bg-[#fbfaf7]/80 px-4 text-xs font-semibold text-[#445047] hover:bg-white">
                   <RotateCcw className="h-3.5 w-3.5" />
                   Сбросить ракурс
@@ -375,13 +395,13 @@ export default function Home() {
               <div className="canvas-frame relative min-h-[500px] overflow-hidden rounded-[16px] border border-[#cfd3cc] bg-[#f1efe9] shadow-[0_12px_28px_rgba(44,54,48,0.06)]">
                 <div className="absolute left-5 top-5 z-[1] flex items-center gap-2 border-b border-[#a5b4a7] bg-[#f8f7f2]/85 px-1 py-1.5 backdrop-blur-sm">
                   <span className="h-1.5 w-1.5 rounded-full bg-[#28614e]" />
-                  <span className="font-mono text-[9px] font-medium tracking-[0.12em] text-[#56635a]">3D МАКЕТ АКТИВЕН</span>
+                  <span className="font-mono text-[9px] font-medium tracking-[0.12em] text-[#56635a]">{viewMode === "mannequin" ? "МАКЕТ ЧЕЛОВЕКА · BETA" : "2D СТЕК · БЕЗ МАНЕКЕНА"}</span>
                 </div>
                 <div className="absolute bottom-5 left-5 z-[1] max-w-[220px] border-l-2 border-[#28614e] bg-[#f8f7f2]/82 p-3.5 backdrop-blur-sm">
                   <p className="font-mono text-[9px] font-medium tracking-[0.1em] text-[#28614e]">ПРЕДПРОСМОТР СЛОЁВ</p>
-                  <p className="mt-1 text-xs leading-5 text-[#5d665e]">Колёсико — масштаб. Потяни модель, чтобы сменить ракурс.</p>
+                  <p className="mt-1 text-xs leading-5 text-[#5d665e]">{viewMode === "mannequin" ? "Спокойный силуэт для быстрой оценки образа. Точная посадка — в режиме редактирования." : "Вещи складываются поверх друг друга на чистом поле — без анатомии и лишней логики."}</p>
                 </div>
-                <TryOnCanvas activeGarments={activeGarments} bodyMode={bodyMode} sceneKey={sceneKey} />
+                {viewMode === "mannequin" ? <TryOnStage key={sceneKey} activeGarments={activeGarments} bodyMode={bodyMode} editingGarmentId={isEditing ? fittingGarment?.id : undefined} onWarpChange={updateWarp} /> : <FlatStackStage key={sceneKey} activeGarments={activeGarments} editingGarmentId={isEditing ? fittingGarment?.id : undefined} onWarpChange={updateWarp} />}
               </div>
 
               <div className="flex flex-col gap-4">
@@ -455,7 +475,11 @@ export default function Home() {
                 </div>
 
                 <div className="paper-tag mt-auto hidden overflow-hidden rounded-[13px] border border-[#d8d8d1] bg-[#fbfaf7] xl:block">
-                  <div className="h-24 bg-[url('/manus-storage/atelier-textile-study_b21b80ac.jpg')] bg-cover bg-center" />
+                  <div className="relative h-24 overflow-hidden bg-[#dce4db]">
+                    <div className="absolute inset-y-0 left-[18%] w-16 -rotate-[18deg] bg-[#f4f0e6]/75" />
+                    <div className="absolute inset-y-0 left-[43%] w-9 rotate-[22deg] bg-[#28614e]/18" />
+                    <div className="absolute inset-x-0 bottom-5 border-t border-dashed border-[#28614e]/30" />
+                  </div>
                   <div className="p-4">
                     <p className="font-mono text-[9px] font-medium tracking-[0.11em] text-[#28614e]">СОВЕТ ПО ЗАГРУЗКЕ</p>
                     <p className="mt-1 text-xs leading-5 text-[#626b63]">Лучше всего работают вещи на ровном, светлом фоне.</p>
