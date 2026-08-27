@@ -19,4 +19,4 @@
 - [x] Добавить сохранение состояния активной доски, zoom и выбранных слоёв между сессиями.
 - [x] Переработать библиотеку и образы: поиск, цветные метки, избранное и дублирование образа.
 - [x] Проверить desktop/mobile, светлую/тёмную тему, IndexedDB/резервное хранилище, импорт/экспорт и горячие клавиши.
-- [ ] Запустить pnpm check/build, визуальный pass, commit/push master, READY deployment и production-проверку.
+- [x] Запустить pnpm check/build, визуальный pass, commit/push master, READY deployment и production-проверку.
