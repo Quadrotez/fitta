@@ -1,17 +1,22 @@
 /**
- * Style: «Тихий ателье» — автономная WebGL-сцена без сетевых 3D-зависимостей.
- * Решение: манекен собран из объёмных Three.js-примитивов в устойчивой прямой стойке;
- * одежда лежит на отдельных цилиндрических 3D-поверхностях, а не на 2D-изображении.
+ * Style: «Тихий ателье» — спокойная WebGL-примерочная с настоящими объёмными мешами.
+ * Жесты считают движение в плоскости, зафиксированной камерой в начале drag, поэтому
+ * смена перспективы не меняет направление перемещения одежды.
  */
-import { Suspense, useEffect, useRef, useState } from "react";
-import { Canvas, type ThreeEvent } from "@react-three/fiber";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { Canvas, type ThreeEvent, useLoader } from "@react-three/fiber";
 import { OrbitControls, PerspectiveCamera, useTexture } from "@react-three/drei";
+import { FBXLoader } from "three/examples/jsm/loaders/FBXLoader.js";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { OBJLoader } from "three/examples/jsm/loaders/OBJLoader.js";
 import * as THREE from "three";
-import type { Garment, GarmentCategory, GarmentOffset } from "@/lib/wardrobe";
+import type { Garment, GarmentCategory, GarmentOffset, MannequinGender, UserModel } from "@/lib/wardrobe";
 
 interface TryOnStageProps {
   activeGarments: Partial<Record<GarmentCategory, Garment>>;
-  bodyMode: "standard" | "slim" | "curvy";
+  bodyGender: MannequinGender;
+  bodyScale: { width: number; height: number; depth: number };
+  customModel?: UserModel;
   theme: "light" | "dark";
   onOffsetChange: (garmentId: string, offset: GarmentOffset) => void;
 }
@@ -24,7 +29,6 @@ type SurfaceConfig = {
   z: number;
 };
 
-/** Верх и низ находятся на независимых высотах, чтобы брюки не пересекались с курткой. */
 const surfaces: Record<GarmentCategory, SurfaceConfig> = {
   top: { position: [0, 0.42, 0], radius: 0.43, height: 0.76, arc: 3.9, z: 0.035 },
   bottom: { position: [0, -0.5, 0], radius: 0.34, height: 0.92, arc: 2.95, z: 0.035 },
@@ -34,21 +38,19 @@ const surfaces: Record<GarmentCategory, SurfaceConfig> = {
 };
 
 const clampOffset = (value: number) => Math.max(-1.25, Math.min(1.25, value));
+const clampPercent = (value: number) => Math.max(0, Math.min(100, value));
 
-function useObjectUrl(image: string | Blob) {
-  const [url, setUrl] = useState(() => (typeof image === "string" ? image : ""));
-
+function useObjectUrl(file: Blob | string) {
+  const [url, setUrl] = useState(() => (typeof file === "string" ? file : ""));
   useEffect(() => {
-    if (typeof image === "string") {
-      setUrl(image);
+    if (typeof file === "string") {
+      setUrl(file);
       return;
     }
-
-    const nextUrl = URL.createObjectURL(image);
+    const nextUrl = URL.createObjectURL(file);
     setUrl(nextUrl);
     return () => URL.revokeObjectURL(nextUrl);
-  }, [image]);
-
+  }, [file]);
   return url;
 }
 
@@ -56,99 +58,102 @@ function MannequinMaterial({ color }: { color: string }) {
   return <meshStandardMaterial color={color} roughness={0.79} metalness={0.04} />;
 }
 
-/**
- * Предсказуемый автономный манекен: человек стоит прямо, руки опущены вдоль корпуса.
- * Здесь нет GLB, анимаций, скелета или сторонних URL — только настоящие меши WebGL.
- */
-function PrimitiveMannequin({ bodyMode, dark }: Pick<TryOnStageProps, "bodyMode"> & { dark: boolean }) {
-  const dimensions: [number, number, number] = bodyMode === "slim" ? [0.9, 1.03, 0.9] : bodyMode === "curvy" ? [1.13, 1, 1.11] : [1, 1, 1];
-  const color = dark ? "#73887a" : "#bebbb1";
+function PrimitiveMannequin({ bodyGender, bodyScale, dark }: Pick<TryOnStageProps, "bodyGender" | "bodyScale"> & { dark: boolean }) {
+  const genderDimensions = {
+    neutral: { shoulder: 1, chest: 1, hip: 1, waist: 1 },
+    masculine: { shoulder: 1.12, chest: 1.1, hip: 0.96, waist: 1.04 },
+    feminine: { shoulder: 0.94, chest: 1.04, hip: 1.13, waist: 0.88 },
+  }[bodyGender];
+  const dimensions: [number, number, number] = [bodyScale.width / 100, bodyScale.height / 100, bodyScale.depth / 100];
+  const color = dark ? "#788c7e" : "#bdbbb2";
 
   return (
     <group scale={dimensions}>
-      {/* Голова и шея */}
       <mesh position={[0, 1.22, 0.02]} scale={[0.96, 1.12, 0.93]} castShadow receiveShadow>
-        <sphereGeometry args={[0.2, 32, 24]} />
-        <MannequinMaterial color={color} />
+        <sphereGeometry args={[0.2, 32, 24]} /><MannequinMaterial color={color} />
       </mesh>
       <mesh position={[0, 1.02, 0]} castShadow receiveShadow>
-        <cylinderGeometry args={[0.1, 0.11, 0.16, 24]} />
-        <MannequinMaterial color={color} />
+        <cylinderGeometry args={[0.1, 0.11, 0.16, 24]} /><MannequinMaterial color={color} />
       </mesh>
-
-      {/* Торс с более широкими плечами и узкой талией */}
-      <mesh position={[0, 0.6, 0]} castShadow receiveShadow>
-        <cylinderGeometry args={[0.38, 0.28, 0.78, 32]} />
-        <MannequinMaterial color={color} />
+      <mesh position={[0, 0.6, 0]} scale={[genderDimensions.shoulder, 1, 1]} castShadow receiveShadow>
+        <cylinderGeometry args={[0.38 * genderDimensions.chest, 0.28 * genderDimensions.waist, 0.78, 32]} /><MannequinMaterial color={color} />
       </mesh>
-      <mesh position={[0, 0.12, 0]} scale={[1, 0.72, 0.79]} castShadow receiveShadow>
-        <sphereGeometry args={[0.31, 32, 20]} />
-        <MannequinMaterial color={color} />
+      <mesh position={[0, 0.12, 0]} scale={[genderDimensions.hip, 0.72, 0.79]} castShadow receiveShadow>
+        <sphereGeometry args={[0.31, 32, 20]} /><MannequinMaterial color={color} />
       </mesh>
-
-      {/* Руки расположены вертикально у корпуса, без A-позы и жестов. */}
-      <mesh position={[-0.47, 0.48, 0]} castShadow receiveShadow>
-        <cylinderGeometry args={[0.085, 0.105, 0.6, 20]} />
-        <MannequinMaterial color={color} />
+      <mesh position={[-0.47 * genderDimensions.shoulder, 0.48, 0]} castShadow receiveShadow>
+        <cylinderGeometry args={[0.085, 0.105, 0.6, 20]} /><MannequinMaterial color={color} />
       </mesh>
-      <mesh position={[0.47, 0.48, 0]} castShadow receiveShadow>
-        <cylinderGeometry args={[0.085, 0.105, 0.6, 20]} />
-        <MannequinMaterial color={color} />
+      <mesh position={[0.47 * genderDimensions.shoulder, 0.48, 0]} castShadow receiveShadow>
+        <cylinderGeometry args={[0.085, 0.105, 0.6, 20]} /><MannequinMaterial color={color} />
       </mesh>
-      <mesh position={[-0.47, -0.11, 0.01]} castShadow receiveShadow>
-        <cylinderGeometry args={[0.07, 0.085, 0.57, 20]} />
-        <MannequinMaterial color={color} />
+      <mesh position={[-0.47 * genderDimensions.shoulder, -0.11, 0.01]} castShadow receiveShadow>
+        <cylinderGeometry args={[0.07, 0.085, 0.57, 20]} /><MannequinMaterial color={color} />
       </mesh>
-      <mesh position={[0.47, -0.11, 0.01]} castShadow receiveShadow>
-        <cylinderGeometry args={[0.07, 0.085, 0.57, 20]} />
-        <MannequinMaterial color={color} />
+      <mesh position={[0.47 * genderDimensions.shoulder, -0.11, 0.01]} castShadow receiveShadow>
+        <cylinderGeometry args={[0.07, 0.085, 0.57, 20]} /><MannequinMaterial color={color} />
       </mesh>
-      <mesh position={[-0.47, -0.46, 0.02]} scale={[0.78, 1.35, 0.72]} castShadow receiveShadow>
-        <sphereGeometry args={[0.075, 18, 14]} />
-        <MannequinMaterial color={color} />
+      <mesh position={[-0.47 * genderDimensions.shoulder, -0.46, 0.02]} scale={[0.78, 1.35, 0.72]} castShadow receiveShadow>
+        <sphereGeometry args={[0.075, 18, 14]} /><MannequinMaterial color={color} />
       </mesh>
-      <mesh position={[0.47, -0.46, 0.02]} scale={[0.78, 1.35, 0.72]} castShadow receiveShadow>
-        <sphereGeometry args={[0.075, 18, 14]} />
-        <MannequinMaterial color={color} />
+      <mesh position={[0.47 * genderDimensions.shoulder, -0.46, 0.02]} scale={[0.78, 1.35, 0.72]} castShadow receiveShadow>
+        <sphereGeometry args={[0.075, 18, 14]} /><MannequinMaterial color={color} />
       </mesh>
-
-      {/* Ноги стоят параллельно, стопы опираются на пол. */}
-      <mesh position={[-0.17, -0.56, 0]} castShadow receiveShadow>
-        <cylinderGeometry args={[0.18, 0.125, 0.96, 24]} />
-        <MannequinMaterial color={color} />
+      <mesh position={[-0.17 * genderDimensions.hip, -0.56, 0]} scale={[genderDimensions.hip, 1, 1]} castShadow receiveShadow>
+        <cylinderGeometry args={[0.18, 0.125, 0.96, 24]} /><MannequinMaterial color={color} />
       </mesh>
-      <mesh position={[0.17, -0.56, 0]} castShadow receiveShadow>
-        <cylinderGeometry args={[0.18, 0.125, 0.96, 24]} />
-        <MannequinMaterial color={color} />
+      <mesh position={[0.17 * genderDimensions.hip, -0.56, 0]} scale={[genderDimensions.hip, 1, 1]} castShadow receiveShadow>
+        <cylinderGeometry args={[0.18, 0.125, 0.96, 24]} /><MannequinMaterial color={color} />
       </mesh>
-      <mesh position={[-0.17, -1.14, 0.07]} scale={[0.93, 0.48, 1.45]} castShadow receiveShadow>
-        <sphereGeometry args={[0.15, 20, 14]} />
-        <MannequinMaterial color={color} />
+      <mesh position={[-0.17 * genderDimensions.hip, -1.14, 0.07]} scale={[0.93, 0.48, 1.45]} castShadow receiveShadow>
+        <sphereGeometry args={[0.15, 20, 14]} /><MannequinMaterial color={color} />
       </mesh>
-      <mesh position={[0.17, -1.14, 0.07]} scale={[0.93, 0.48, 1.45]} castShadow receiveShadow>
-        <sphereGeometry args={[0.15, 20, 14]} />
-        <MannequinMaterial color={color} />
+      <mesh position={[0.17 * genderDimensions.hip, -1.14, 0.07]} scale={[0.93, 0.48, 1.45]} castShadow receiveShadow>
+        <sphereGeometry args={[0.15, 20, 14]} /><MannequinMaterial color={color} />
       </mesh>
     </group>
   );
 }
 
+function LoadedCustomModel({ model }: { model: UserModel }) {
+  const url = useObjectUrl(model.file);
+  if (!url) return null;
+  if (model.format === "glb" || model.format === "gltf") return <LoadedGltf url={url} />;
+  if (model.format === "obj") return <LoadedObj url={url} />;
+  return <LoadedFbx url={url} />;
+}
+
+function LoadedGltf({ url }: { url: string }) {
+  const result = useLoader(GLTFLoader, url);
+  const scene = useMemo(() => result.scene.clone(true), [result.scene]);
+  return <primitive object={scene} position={[0, -1.2, 0]} scale={[1.15, 1.15, 1.15]} />;
+}
+
+function LoadedObj({ url }: { url: string }) {
+  const object = useLoader(OBJLoader, url);
+  const scene = useMemo(() => object.clone(true), [object]);
+  return <primitive object={scene} position={[0, -1.2, 0]} scale={[1.15, 1.15, 1.15]} />;
+}
+
+function LoadedFbx({ url }: { url: string }) {
+  const object = useLoader(FBXLoader, url);
+  const scene = useMemo(() => object.clone(true), [object]);
+  return <primitive object={scene} position={[0, -1.2, 0]} scale={[0.012, 0.012, 0.012]} />;
+}
+
 function GarmentSurface({ garment, onOffsetChange, onDragChange }: { garment: Garment; onOffsetChange: (id: string, offset: GarmentOffset) => void; onDragChange: (value: boolean) => void }) {
   const textureUrl = useObjectUrl(garment.image);
-
-  return textureUrl ? (
-    <Suspense fallback={null}>
-      <LoadedGarmentSurface textureUrl={textureUrl} garment={garment} onOffsetChange={onOffsetChange} onDragChange={onDragChange} />
-    </Suspense>
-  ) : null;
+  return textureUrl ? <Suspense fallback={null}><LoadedGarmentSurface textureUrl={textureUrl} garment={garment} onOffsetChange={onOffsetChange} onDragChange={onDragChange} /></Suspense> : null;
 }
 
 function LoadedGarmentSurface({ textureUrl, garment, onOffsetChange, onDragChange }: { textureUrl: string; garment: Garment; onOffsetChange: (id: string, offset: GarmentOffset) => void; onDragChange: (value: boolean) => void }) {
   const texture = useTexture(textureUrl);
-  const drag = useRef<{ pointerId: number; point: THREE.Vector3; offset: GarmentOffset } | null>(null);
+  const drag = useRef<{ pointerId: number; point: THREE.Vector3; anchor: THREE.Vector3; right: THREE.Vector3; up: THREE.Vector3; offset: GarmentOffset } | null>(null);
   const config = surfaces[garment.category];
   const offset = garment.offset ?? { x: 0, y: 0 };
   const fit = garment.fit ?? { width: 100, height: 100 };
+  const curvature = clampPercent(garment.curvature ?? 100) / 100;
+  const arc = Math.max(0.8, config.arc * (0.08 + curvature * 0.92));
 
   useEffect(() => {
     texture.colorSpace = THREE.SRGBColorSpace;
@@ -157,15 +162,21 @@ function LoadedGarmentSurface({ textureUrl, garment, onOffsetChange, onDragChang
     texture.needsUpdate = true;
   }, [texture]);
 
-  const getDragPoint = (event: ThreeEvent<PointerEvent>) => {
+  const getDragPoint = (event: ThreeEvent<PointerEvent>, anchor: THREE.Vector3) => {
+    const cameraDirection = new THREE.Vector3();
+    event.camera.getWorldDirection(cameraDirection);
+    const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(cameraDirection, anchor);
     const point = new THREE.Vector3();
-    event.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 0, 1), -(config.position[2] + config.z + config.radius)), point);
+    event.ray.intersectPlane(plane, point);
     return point;
   };
 
   const startMove = (event: ThreeEvent<PointerEvent>) => {
     event.stopPropagation();
-    drag.current = { pointerId: event.pointerId, point: getDragPoint(event), offset };
+    const anchor = new THREE.Vector3(config.position[0] + offset.x * 1.15, config.position[1] - offset.y * 1.35, config.position[2] + config.z);
+    const right = new THREE.Vector3().setFromMatrixColumn(event.camera.matrixWorld, 0).normalize();
+    const up = new THREE.Vector3().setFromMatrixColumn(event.camera.matrixWorld, 1).normalize();
+    drag.current = { pointerId: event.pointerId, point: getDragPoint(event, anchor), anchor, right, up, offset };
     (event.target as unknown as { setPointerCapture: (pointerId: number) => void }).setPointerCapture(event.pointerId);
     onDragChange(true);
   };
@@ -174,10 +185,11 @@ function LoadedGarmentSurface({ textureUrl, garment, onOffsetChange, onDragChang
     const activeDrag = drag.current;
     if (!activeDrag || activeDrag.pointerId !== event.pointerId) return;
     event.stopPropagation();
-    const point = getDragPoint(event);
+    const point = getDragPoint(event, activeDrag.anchor);
+    const delta = point.sub(activeDrag.point);
     onOffsetChange(garment.id, {
-      x: clampOffset(activeDrag.offset.x + (point.x - activeDrag.point.x) / 1.15),
-      y: clampOffset(activeDrag.offset.y + (point.y - activeDrag.point.y) / 1.35),
+      x: clampOffset(activeDrag.offset.x + delta.dot(activeDrag.right) / 1.15),
+      y: clampOffset(activeDrag.offset.y - delta.dot(activeDrag.up) / 1.35),
     });
   };
 
@@ -198,18 +210,17 @@ function LoadedGarmentSurface({ textureUrl, garment, onOffsetChange, onDragChang
       onPointerCancel={finishMove}
       castShadow
     >
-      <cylinderGeometry args={[config.radius * (fit.width / 100), config.radius * (fit.width / 100), config.height * (fit.height / 100), 36, 1, true, -config.arc / 2, config.arc]} />
+      <cylinderGeometry args={[config.radius * (fit.width / 100), config.radius * (fit.width / 100), config.height * (fit.height / 100), 36, 1, true, -arc / 2, arc]} />
       <meshStandardMaterial map={texture} transparent opacity={0.98} side={THREE.DoubleSide} roughness={0.9} metalness={0} />
     </mesh>
   );
 }
 
-function FittingScene({ activeGarments, bodyMode, theme, onOffsetChange }: TryOnStageProps) {
+function FittingScene({ activeGarments, bodyGender, bodyScale, customModel, theme, onOffsetChange }: TryOnStageProps) {
   const [draggingGarment, setDraggingGarment] = useState(false);
   const dark = theme === "dark";
   const background = dark ? "#111915" : "#f1efe9";
   const floor = dark ? "#24322a" : "#d5d7ce";
-
   return (
     <>
       <color attach="background" args={[background]} />
@@ -218,25 +229,10 @@ function FittingScene({ activeGarments, bodyMode, theme, onOffsetChange }: TryOn
       <ambientLight intensity={dark ? 1.28 : 1.06} />
       <directionalLight position={[4, 6, 5]} intensity={dark ? 2.1 : 2.35} castShadow shadow-mapSize={[1024, 1024]} />
       <directionalLight position={[-4, 2, -2]} intensity={dark ? 0.65 : 0.42} />
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -1.28, 0]} receiveShadow>
-        <circleGeometry args={[3.7, 64]} />
-        <meshStandardMaterial color={floor} roughness={1} />
-      </mesh>
-      <PrimitiveMannequin bodyMode={bodyMode} dark={dark} />
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -1.28, 0]} receiveShadow><circleGeometry args={[3.7, 64]} /><meshStandardMaterial color={floor} roughness={1} /></mesh>
+      {customModel ? <Suspense fallback={null}><LoadedCustomModel model={customModel} /></Suspense> : <PrimitiveMannequin bodyGender={bodyGender} bodyScale={bodyScale} dark={dark} />}
       {Object.values(activeGarments).map((garment) => garment && <GarmentSurface key={garment.id} garment={garment} onOffsetChange={onOffsetChange} onDragChange={setDraggingGarment} />)}
-      <OrbitControls
-        enabled={!draggingGarment}
-        enablePan={false}
-        enableDamping
-        dampingFactor={0.09}
-        rotateSpeed={0.66}
-        zoomSpeed={0.62}
-        minDistance={2.5}
-        maxDistance={12}
-        minPolarAngle={0.48}
-        maxPolarAngle={2.65}
-        target={[0, 0.05, 0]}
-      />
+      <OrbitControls enabled={!draggingGarment} enablePan={false} enableDamping dampingFactor={0.09} rotateSpeed={0.66} zoomSpeed={0.62} minDistance={2.5} maxDistance={12} minPolarAngle={0.48} maxPolarAngle={2.65} target={[0, 0.05, 0]} />
     </>
   );
 }
@@ -244,7 +240,6 @@ function FittingScene({ activeGarments, bodyMode, theme, onOffsetChange }: TryOn
 export default function TryOnStage(props: TryOnStageProps) {
   const dark = props.theme === "dark";
   const stageRef = useRef<HTMLDivElement>(null);
-
   useEffect(() => {
     const stage = stageRef.current;
     if (!stage) return;
@@ -252,10 +247,9 @@ export default function TryOnStage(props: TryOnStageProps) {
     stage.addEventListener("wheel", preventPageScroll, { passive: false });
     return () => stage.removeEventListener("wheel", preventPageScroll);
   }, []);
-
   return (
-    <div ref={stageRef} className="relative h-full w-full touch-none" aria-label="Настоящая 3D-сцена примерки: перетаскивай пустое поле для полного поворота, тяни одежду для перемещения, используй колесо для масштаба">
-      <Canvas className="fitta-webgl-canvas" shadows dpr={[1, 2]} gl={{ antialias: true, alpha: false, powerPreference: "high-performance" }} style={{ background: dark ? "#111915" : "#f1efe9", display: "block", touchAction: "none" }}>
+    <div ref={stageRef} className="relative h-full w-full touch-none" aria-label="Настоящая 3D-сцена примерки: тяни пустое поле для ракурса, одежду для перемещения, используй колесо для масштаба">
+      <Canvas fallback={<div className="flex h-full min-h-[500px] flex-col items-center justify-center gap-2 bg-[#111915] px-8 text-center text-[#dce8df]"><strong className="font-mono text-xs tracking-[0.12em]">WEBGL НЕДОСТУПЕН</strong><span className="max-w-sm text-sm text-[#aebbb1]">Включи аппаратное ускорение или используй 2D-режим — локальные вещи и образы при этом не пропадут.</span></div>} className="fitta-webgl-canvas" shadows dpr={[1, 2]} gl={{ antialias: true, alpha: false, powerPreference: "high-performance" }} style={{ background: dark ? "#111915" : "#f1efe9", display: "block", touchAction: "none" }}>
         <FittingScene {...props} />
       </Canvas>
     </div>

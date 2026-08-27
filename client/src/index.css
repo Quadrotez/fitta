@@ -70,7 +70,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid #28614e; outline-
 .warp-point:active { cursor: grabbing; transform: translate(-50%, -50%) scale(0.92); }
 .paper-tag {
   border-radius: 0.55rem !important;
-  box-shadow: 3px 3px 0 rgba(40, 97, 78, 0.045);
+  box-shadow: 1px 1px 0 rgba(40, 97, 78, 0.06);
   background-image: linear-gradient(90deg, rgba(40, 97, 78, 0.26) 0 22px, transparent 22px), radial-gradient(circle at 12px 12px, rgba(40, 97, 78, 0.35) 0 1px, transparent 1.5px);
   background-size: 100% 1px, 100% 100%;
   background-repeat: no-repeat;
@@ -122,17 +122,24 @@ button:focus-visible, input:focus-visible { outline: 2px solid #28614e; outline-
 .dark .atelier-shell aside { background-color: #18201d !important; border-color: #334039 !important; }
 .dark .atelier-shell .canvas-frame { background-color: #202924 !important; border-color: #3b4a42 !important; box-shadow: 0 12px 30px rgba(0,0,0,0.22); }
 .dark .atelier-shell .canvas-frame canvas[data-engine] { background: #111915 !important; }
-.dark .atelier-shell .paper-tag,
-.dark .atelier-shell .category-tab,
+  .dark .atelier-shell .paper-tag,
+  .dark .atelier-shell .category-tab,
 .dark .atelier-shell .upload-surface,
 .dark .atelier-shell .bg-white,
 .dark .atelier-shell .bg-\[\#fbfaf7\],
 .dark .atelier-shell .bg-\[\#fdfcf9\],
 .dark .atelier-shell .bg-\[\#f8f7f3\],
 .dark .atelier-shell .bg-\[\#f8f7f2\] { background-color: #202924 !important; border-color: #3b4a42 !important; }
-.dark .atelier-shell .bg-\[\#edf3ee\],
-.dark .atelier-shell .bg-\[\#eaf0eb\],
-.dark .atelier-shell .bg-\[\#e3ebe4\] { background-color: #25342c !important; border-color: #496050 !important; }
+  .dark .atelier-shell .bg-\[\#edf3ee\],
+  .dark .atelier-shell .bg-\[\#eaf0eb\],
+  .dark .atelier-shell .bg-\[\#e3ebe4\],
+  .dark .atelier-shell .bg-\[\#e8e7e1\],
+  .dark .atelier-shell .bg-\[\#e7f0e9\] { background-color: #25342c !important; border-color: #496050 !important; }
+  .dark .atelier-shell .hover\:bg-white:hover,
+  .dark .atelier-shell .bg-white\/70:hover { background-color: #2b3931 !important; }
+  .dark .atelier-shell .hover\:bg-\[\#f4e8e5\]:hover,
+  .dark .atelier-shell .hover\:bg-\[\#f2e5e1\]:hover { background-color: #3a2928 !important; }
+  .dark .atelier-shell .bg-\[\#f6f4ef\] { background-color: #131917 !important; }
 .dark .atelier-shell .text-\[\#1e2522\],
 .dark .atelier-shell .text-\[\#445047\],
 .dark .atelier-shell .text-\[\#4d5751\],

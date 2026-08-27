@@ -18,7 +18,7 @@ const layerPosition: Record<GarmentCategory, { x: number; y: number; width: numb
   bottom: { x: 51, y: 66, width: 48, height: 55 },
   outerwear: { x: 49, y: 42, width: 66, height: 55 },
   shoes: { x: 50, y: 81, width: 58, height: 20 },
-  accessory: { x: 52, y: 28, width: 38, height: 38 },
+  accessory: { x: 52, y: 17, width: 20, height: 19 },
 };
 
 export default function FlatStackStage({ activeGarments, editingGarmentId, theme, onWarpChange, onOffsetChange }: FlatStackStageProps) {
