@@ -6,7 +6,6 @@ import { nanoid } from "nanoid";
 
 export const WARDROBE_STORAGE_KEY = "garments";
 export const LOOKS_STORAGE_KEY = "looks";
-export const USER_MODEL_STORAGE_KEY = "mannequin-model";
 export const DEFAULTS_SEEDED_STORAGE_KEY = "defaults-seeded-v2";
 const LEGACY_WARDROBE_STORAGE_KEY = "wardrobe-tryon:garments";
 const LEGACY_LOOKS_STORAGE_KEY = "wardrobe-tryon:looks";
@@ -16,7 +15,6 @@ const STORE_NAME = "workspace";
 const pendingWrites = new Map<string, Promise<void>>();
 
 export type GarmentCategory = "top" | "bottom" | "outerwear" | "shoes" | "accessory";
-export type MannequinGender = "neutral" | "masculine" | "feminine";
 
 export interface WarpPoint { x: number; y: number; }
 export interface GarmentOffset { x: number; y: number; }
@@ -36,8 +34,6 @@ export interface Garment {
   fit?: { width: number; height: number };
   offset?: GarmentOffset;
   warp?: WarpPoint[];
-  /** 0 = less wrap on the mannequin, 100 = follows the cylindrical surface. */
-  curvature?: number;
   isDefault?: boolean;
   createdAt: string;
 }
@@ -48,14 +44,6 @@ export interface LookPreset {
   garmentIds: string[];
   createdAt: string;
   isDefault?: boolean;
-}
-
-export interface UserModel {
-  id: string;
-  name: string;
-  format: "glb" | "gltf" | "obj" | "fbx";
-  file: Blob;
-  createdAt: string;
 }
 
 export const categoryMeta: Record<GarmentCategory, { label: string; short: string; color: string; dot: string }> = {
@@ -87,7 +75,6 @@ export function makeGarment(file: File, category: GarmentCategory): Garment {
     image: file,
     fit: { width: 100, height: 100 },
     offset: { x: 0, y: 0 },
-    curvature: 100,
     warp: DEFAULT_WARP_POINTS.map((point) => ({ ...point })),
     createdAt: new Date().toISOString(),
   };
@@ -99,7 +86,6 @@ export function makeDefaultGarments(now = new Date().toISOString()): Garment[] {
     id: nanoid(10),
     fit: { width: 100, height: 100 },
     offset: { x: 0, y: 0 },
-    curvature: 100,
     warp: DEFAULT_WARP_POINTS.map((point) => ({ ...point })),
     isDefault: true,
     createdAt: now,
@@ -205,10 +191,6 @@ async function blobToDataUrl(blob: Blob): Promise<string> {
 }
 
 async function toFallbackValue<T>(key: string, value: T): Promise<T> {
-  if (key === USER_MODEL_STORAGE_KEY && value && typeof value === "object") {
-    const model = value as unknown as UserModel;
-    return { ...model, file: await blobToDataUrl(model.file) } as T;
-  }
   if (key !== WARDROBE_STORAGE_KEY || !Array.isArray(value)) return value;
   const garments = await Promise.all((value as Garment[]).map(async (garment) => {
     const image = garment.image;
@@ -231,11 +213,6 @@ async function readFallback<T>(key: string, fallback: T): Promise<T> {
     const parsed = JSON.parse(raw) as T;
     if (key === WARDROBE_STORAGE_KEY && Array.isArray(parsed)) {
       return repairLegacyGarments(parsed as Garment[]) as T;
-    }
-    if (key === USER_MODEL_STORAGE_KEY && parsed && typeof parsed === "object") {
-      const model = parsed as unknown as UserModel & { file: string };
-      const response = await fetch(model.file);
-      return { ...model, file: await response.blob() } as T;
     }
     return parsed;
   } catch {
@@ -302,13 +279,3 @@ export async function saveToStorage<T>(key: string, value: T): Promise<boolean> 
   }
 }
 
-export async function saveUserModel(model: UserModel | null): Promise<boolean> {
-  if (model === null) {
-    try { await deleteFromDatabase(USER_MODEL_STORAGE_KEY); return true; } catch { return false; }
-  }
-  return saveToStorage(USER_MODEL_STORAGE_KEY, model);
-}
-
-export function loadUserModel(): Promise<UserModel | undefined> {
-  return loadFromStorage<UserModel | undefined>(USER_MODEL_STORAGE_KEY, undefined);
-}

@@ -12,6 +12,7 @@ interface WarpedGarmentProps {
   editable: boolean;
   onChange: (points: WarpPoint[]) => void;
   onOffsetChange: (offset: GarmentOffset) => void;
+  zoom: number;
 }
 
 const CANVAS_SIZE = 1000;
@@ -52,7 +53,7 @@ function paintTriangle(context: CanvasRenderingContext2D, image: HTMLImageElemen
   context.restore();
 }
 
-export default function WarpedGarment({ image, name, points, offset, editable, onChange, onOffsetChange }: WarpedGarmentProps) {
+export default function WarpedGarment({ image, name, points, offset, zoom, editable, onChange, onOffsetChange }: WarpedGarmentProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const frameRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
@@ -98,7 +99,9 @@ export default function WarpedGarment({ image, name, points, offset, editable, o
     const frame = frameRef.current;
     if (!frame) return;
     const rect = frame.getBoundingClientRect();
-    onChange(points.map((point, pointIndex) => pointIndex === index ? { x: clampPoint((event.clientX - rect.left) / rect.width), y: clampPoint((event.clientY - rect.top) / rect.height) } : point));
+    const logicalWidth = rect.width / Math.max(0.01, zoom);
+    const logicalHeight = rect.height / Math.max(0.01, zoom);
+    onChange(points.map((point, pointIndex) => pointIndex === index ? { x: clampPoint((event.clientX - rect.left) / logicalWidth), y: clampPoint((event.clientY - rect.top) / logicalHeight) } : point));
   };
 
   const beginWholeMove = (event: PointerEvent<HTMLDivElement>) => {
@@ -114,7 +117,9 @@ export default function WarpedGarment({ image, name, points, offset, editable, o
     if (!action || !frame || action.pointerId !== event.pointerId) return;
     event.stopPropagation();
     const rect = frame.getBoundingClientRect();
-    onOffsetChange({ x: clampOffset(action.offset.x + (event.clientX - action.x) / rect.width), y: clampOffset(action.offset.y + (event.clientY - action.y) / rect.height) });
+    const logicalWidth = rect.width / Math.max(0.01, zoom);
+    const logicalHeight = rect.height / Math.max(0.01, zoom);
+    onOffsetChange({ x: clampOffset(action.offset.x + (event.clientX - action.x) / logicalWidth), y: clampOffset(action.offset.y + (event.clientY - action.y) / logicalHeight) });
   };
 
   const endWholeMove = (event: PointerEvent<HTMLDivElement>) => {
