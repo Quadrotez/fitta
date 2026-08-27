@@ -3,12 +3,13 @@
  */
 import type { CSSProperties } from "react";
 import WarpedGarment from "@/components/WarpedGarment";
-import { categoryOrder, DEFAULT_WARP_POINTS, type Garment, type GarmentCategory, type WarpPoint } from "@/lib/wardrobe";
+import { categoryOrder, DEFAULT_WARP_POINTS, type Garment, type GarmentCategory, type GarmentOffset, type WarpPoint } from "@/lib/wardrobe";
 
 interface FlatStackStageProps {
   activeGarments: Partial<Record<GarmentCategory, Garment>>;
   editingGarmentId?: string;
   onWarpChange: (garmentId: string, points: WarpPoint[]) => void;
+  onOffsetChange: (garmentId: string, offset: GarmentOffset) => void;
 }
 
 const layerPosition: Record<GarmentCategory, { x: number; y: number; width: number; height: number }> = {
@@ -19,7 +20,7 @@ const layerPosition: Record<GarmentCategory, { x: number; y: number; width: numb
   accessory: { x: 52, y: 28, width: 38, height: 38 },
 };
 
-export default function FlatStackStage({ activeGarments, editingGarmentId, onWarpChange }: FlatStackStageProps) {
+export default function FlatStackStage({ activeGarments, editingGarmentId, onWarpChange, onOffsetChange }: FlatStackStageProps) {
   const selectedGarments = categoryOrder
     .map((category) => activeGarments[category])
     .filter(Boolean) as Garment[];
@@ -49,7 +50,7 @@ export default function FlatStackStage({ activeGarments, editingGarmentId, onWar
         };
         return (
           <div key={garment.id} className="absolute overflow-visible shadow-[0_12px_22px_rgba(30,37,34,0.10)]" style={style}>
-            <WarpedGarment image={garment.image} name={garment.name} points={garment.warp ?? DEFAULT_WARP_POINTS} editable={editingGarmentId === garment.id} onChange={(points) => onWarpChange(garment.id, points)} />
+            <WarpedGarment image={garment.image} name={garment.name} points={garment.warp ?? DEFAULT_WARP_POINTS} offset={garment.offset ?? { x: 0, y: 0 }} editable={editingGarmentId === garment.id} onChange={(points) => onWarpChange(garment.id, points)} onOffsetChange={(offset) => onOffsetChange(garment.id, offset)} />
           </div>
         );
       })}

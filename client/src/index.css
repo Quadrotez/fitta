@@ -60,6 +60,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid #28614e; outline-
   mask-image: linear-gradient(to bottom, rgba(0,0,0,.68), transparent 90%);
 }
 .canvas-frame canvas { position: relative; z-index: 0; }
+.canvas-frame canvas[data-engine] { touch-action: none !important; }
 .flat-grid {
   background-image: linear-gradient(rgba(40, 97, 78, 0.045) 1px, transparent 1px), linear-gradient(90deg, rgba(40, 97, 78, 0.045) 1px, transparent 1px);
   background-size: 28px 28px;
@@ -120,6 +121,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid #28614e; outline-
 .dark .atelier-shell header,
 .dark .atelier-shell aside { background-color: #18201d !important; border-color: #334039 !important; }
 .dark .atelier-shell .canvas-frame { background-color: #202924 !important; border-color: #3b4a42 !important; box-shadow: 0 12px 30px rgba(0,0,0,0.22); }
+.dark .atelier-shell .canvas-frame canvas[data-engine] { background: #111915 !important; }
 .dark .atelier-shell .paper-tag,
 .dark .atelier-shell .category-tab,
 .dark .atelier-shell .upload-surface,

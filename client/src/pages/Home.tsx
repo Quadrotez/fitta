@@ -41,6 +41,7 @@ import {
   WARDROBE_STORAGE_KEY,
   type Garment,
   type GarmentCategory,
+  type GarmentOffset,
   type LookPreset,
   type WarpPoint,
 } from "@/lib/wardrobe";
@@ -275,6 +276,16 @@ export default function Home() {
     toast.message("Положение модели сброшено.");
   };
 
+  const openPointEditor = () => {
+    if (viewMode === "flat") {
+      setIsEditing((editing) => !editing);
+      return;
+    }
+    setViewMode("flat");
+    setIsEditing(true);
+    toast.message("Точная правка слоя открыта в 2D-режиме.");
+  };
+
   const toggleFullscreen = async () => {
     try {
       if (document.fullscreenElement) await document.exitFullscreen();
@@ -316,6 +327,12 @@ export default function Home() {
 
   const updateWarp = (garmentId: string, warp: WarpPoint[]) => {
     const nextGarments = garments.map((garment) => garment.id === garmentId ? { ...garment, warp } : garment);
+    setGarments(nextGarments);
+    void saveToStorage(WARDROBE_STORAGE_KEY, nextGarments);
+  };
+
+  const updateOffset = (garmentId: string, offset: GarmentOffset) => {
+    const nextGarments = garments.map((garment) => garment.id === garmentId ? { ...garment, offset } : garment);
     setGarments(nextGarments);
     void saveToStorage(WARDROBE_STORAGE_KEY, nextGarments);
   };
@@ -471,14 +488,14 @@ export default function Home() {
                   <button onClick={() => setViewMode("mannequin")} className={`rounded-full px-3 py-1.5 font-mono text-[9px] font-medium tracking-[0.06em] transition-colors ${viewMode === "mannequin" ? "bg-[#28614e] text-white" : "text-[#6d766e] hover:text-[#28614e]"}`}>МАНЕКЕН</button>
                   <button onClick={() => setViewMode("flat")} className={`flex items-center gap-1 rounded-full px-3 py-1.5 font-mono text-[9px] font-medium tracking-[0.06em] transition-colors ${viewMode === "flat" ? "bg-[#28614e] text-white" : "text-[#6d766e] hover:text-[#28614e]"}`}><Layers3 className="h-3 w-3" /> 2D</button>
                 </div>
-                <button onClick={() => setIsEditing((editing) => !editing)} disabled={!fittingGarment} className={`flex h-10 items-center gap-2 rounded-full border px-4 text-xs font-semibold transition-colors ${isEditing ? "border-[#28614e] bg-[#28614e] text-white" : "border-[#d5d7d1] bg-[#fbfaf7]/80 text-[#445047] hover:bg-white"} disabled:cursor-not-allowed disabled:opacity-45`} title="Редактировать активный слой">
+                <button onClick={openPointEditor} disabled={!fittingGarment} className={`flex h-10 items-center gap-2 rounded-full border px-4 text-xs font-semibold transition-colors ${isEditing && viewMode === "flat" ? "border-[#28614e] bg-[#28614e] text-white" : "border-[#d5d7d1] bg-[#fbfaf7]/80 text-[#445047] hover:bg-white"} disabled:cursor-not-allowed disabled:opacity-45`} title={viewMode === "flat" ? "Редактировать активный слой" : "Открыть 2D-редактор контрольных точек"}>
                   <Pencil className="h-3.5 w-3.5" />
-                  {isEditing ? "Готово" : "Править"}
+                  {viewMode === "flat" ? (isEditing ? "Готово" : "Править") : "Точки в 2D"}
                 </button>
-                <Button onClick={resetScene} variant="outline" className="h-10 gap-2 rounded-full border-[#d5d7d1] bg-[#fbfaf7]/80 px-4 text-xs font-semibold text-[#445047] hover:bg-white">
+                {viewMode === "mannequin" && <Button onClick={resetScene} variant="outline" className="h-10 gap-2 rounded-full border-[#d5d7d1] bg-[#fbfaf7]/80 px-4 text-xs font-semibold text-[#445047] hover:bg-white">
                   <RotateCcw className="h-3.5 w-3.5" />
                   Сбросить ракурс
-                </Button>
+                </Button>}
                 <button onClick={() => void toggleFullscreen()} className="flex h-10 w-10 items-center justify-center rounded-full border border-[#d5d7d1] bg-[#fbfaf7]/80 text-[#445047] transition-colors hover:bg-white" aria-label={isFullscreen ? "Закрыть полноэкранный режим" : "Развернуть сцену"} title={isFullscreen ? "Закрыть полноэкранный режим" : "Развернуть сцену"}>
                   <Maximize2 className="h-4 w-4" />
                 </button>
@@ -488,7 +505,7 @@ export default function Home() {
             <div className="relative grid flex-1 gap-5 xl:grid-cols-[minmax(0,1fr)_230px]">
               <div ref={stageFrameRef} className="canvas-frame relative min-h-[500px] overflow-hidden rounded-[16px] border border-[#cfd3cc] bg-[#f1efe9] shadow-[0_12px_28px_rgba(44,54,48,0.06)]">
                 {isFullscreen && <button onClick={() => void toggleFullscreen()} className="absolute right-5 top-5 z-30 flex h-10 w-10 items-center justify-center rounded-full border border-[#d5d7d1] bg-[#fbfaf7]/90 text-[#445047] shadow-sm backdrop-blur-sm" aria-label="Закрыть полноэкранный режим" title="Закрыть полноэкранный режим"><Minimize2 className="h-4 w-4" /></button>}
-                {viewMode === "mannequin" ? <TryOnStage key={sceneKey} activeGarments={activeGarments} bodyMode={bodyMode} editingGarmentId={isEditing ? fittingGarment?.id : undefined} onWarpChange={updateWarp} /> : <FlatStackStage key={sceneKey} activeGarments={activeGarments} editingGarmentId={isEditing ? fittingGarment?.id : undefined} onWarpChange={updateWarp} />}
+                {viewMode === "mannequin" ? <TryOnStage key={sceneKey} activeGarments={activeGarments} bodyMode={bodyMode} theme={theme} onOffsetChange={updateOffset} /> : <FlatStackStage key={sceneKey} activeGarments={activeGarments} editingGarmentId={isEditing ? fittingGarment?.id : undefined} onWarpChange={updateWarp} onOffsetChange={updateOffset} />}
               </div>
 
               <div className="flex flex-col gap-4">

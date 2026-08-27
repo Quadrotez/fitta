@@ -18,6 +18,11 @@ export interface WarpPoint {
   y: number;
 }
 
+export interface GarmentOffset {
+  x: number;
+  y: number;
+}
+
 export const DEFAULT_WARP_POINTS: WarpPoint[] = [
   { x: 0, y: 0 },
   { x: 1, y: 0 },
@@ -34,6 +39,7 @@ export interface Garment {
     width: number;
     height: number;
   };
+  offset?: GarmentOffset;
   warp?: WarpPoint[];
   createdAt: string;
 }
@@ -97,6 +103,7 @@ export function makeGarment(file: File, category: GarmentCategory): Garment {
     category,
     image: file,
     fit: { width: 100, height: 100 },
+    offset: { x: 0, y: 0 },
     warp: DEFAULT_WARP_POINTS,
     createdAt: new Date().toISOString(),
   };
