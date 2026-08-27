@@ -141,9 +141,30 @@ function LoadedFbx({ url }: { url: string }) {
   return <primitive object={scene} position={[0, -1.2, 0]} scale={[0.012, 0.012, 0.012]} />;
 }
 
+function garmentSurfaceColor(category: GarmentCategory) {
+  return { top: "#f3f0e4", bottom: "#343d3b", outerwear: "#425b4a", shoes: "#e9e6dc", accessory: "#a84d38" }[category];
+}
+
+function FallbackGarmentSurface({ garment, depthOffset = 0 }: { garment: Garment; depthOffset?: number }) {
+  const config = surfaces[garment.category];
+  const offset = garment.offset ?? { x: 0, y: 0 };
+  const fit = garment.fit ?? { width: 100, height: 100 };
+  const curvature = clampPercent(garment.curvature ?? 100) / 100;
+  const arc = Math.max(0.8, config.arc * (0.08 + curvature * 0.92));
+  return (
+      <mesh position={[config.position[0] + offset.x * 1.15, config.position[1] - offset.y * 1.35, config.position[2] + config.z + depthOffset]}>
+      <cylinderGeometry args={[config.radius * (fit.width / 100), config.radius * (fit.width / 100), config.height * (fit.height / 100), 36, 1, true, -arc / 2, arc]} />
+      <meshStandardMaterial color={garmentSurfaceColor(garment.category)} transparent opacity={depthOffset < 0 ? 0.18 : 0.92} side={THREE.DoubleSide} roughness={0.9} />
+    </mesh>
+  );
+}
+
 function GarmentSurface({ garment, onOffsetChange, onDragChange }: { garment: Garment; onOffsetChange: (id: string, offset: GarmentOffset) => void; onDragChange: (value: boolean) => void }) {
   const textureUrl = useObjectUrl(garment.image);
-  return textureUrl ? <Suspense fallback={null}><LoadedGarmentSurface textureUrl={textureUrl} garment={garment} onOffsetChange={onOffsetChange} onDragChange={onDragChange} /></Suspense> : null;
+  return <>
+    <FallbackGarmentSurface garment={garment} depthOffset={textureUrl ? -0.012 : 0} />
+    {textureUrl && <Suspense fallback={null}><LoadedGarmentSurface textureUrl={textureUrl} garment={garment} onOffsetChange={onOffsetChange} onDragChange={onDragChange} /></Suspense>}
+  </>;
 }
 
 function LoadedGarmentSurface({ textureUrl, garment, onOffsetChange, onDragChange }: { textureUrl: string; garment: Garment; onOffsetChange: (id: string, offset: GarmentOffset) => void; onDragChange: (value: boolean) => void }) {
