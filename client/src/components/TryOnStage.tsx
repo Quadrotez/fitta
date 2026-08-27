@@ -33,7 +33,12 @@ const surfaces: Record<GarmentCategory, SurfaceConfig> = {
 };
 
 const clampOffset = (value: number) => Math.max(-1.25, Math.min(1.25, value));
-const MANNEQUIN_MODEL_URL = "/manus-storage/fitta-mpfb_ce7e186d.glb";
+/**
+ * Vercel не содержит служебный `/manus-storage`, поэтому URL модели должен быть
+ * внешним и бинарным. SHA фиксирует версию CC0-исходника и исключает внезапную
+ * замену модели в ветке источника.
+ */
+const MANNEQUIN_MODEL_URL = "https://raw.githubusercontent.com/met4citizen/TalkingHead/eed58d198076a7e1e825f804802921c4d3804d46/avatars/mpfb.glb";
 
 function useObjectUrl(image: string | Blob) {
   const [url, setUrl] = useState(() => (typeof image === "string" ? image : ""));
