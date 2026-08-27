@@ -116,6 +116,7 @@ function BoardLayerView({ layer, garment, stageRef, selected, warpMode, onSelect
 
   const beginDrag = (event: PointerEvent<HTMLDivElement>) => {
     if ((event.target as HTMLElement).closest("button") || layer.locked || (warpMode && selected)) return;
+    event.preventDefault();
     event.stopPropagation();
     onSelect();
     onInteractionStart();
@@ -126,6 +127,7 @@ function BoardLayerView({ layer, garment, stageRef, selected, warpMode, onSelect
     const action = drag.current;
     const stage = stageRef.current;
     if (!action || action.pointerId !== event.pointerId || !stage) return;
+    event.preventDefault();
     const rect = stage.getBoundingClientRect();
     onLayerChange({ ...action.layer, x: clamp(action.layer.x + ((event.clientX - action.x) / rect.width) * 100, -10, 110), y: clamp(action.layer.y + ((event.clientY - action.y) / rect.height) * 100, -10, 110) });
   };
@@ -143,11 +145,11 @@ function BoardLayerView({ layer, garment, stageRef, selected, warpMode, onSelect
   const points = layer.warp ?? DEFAULT_WARP_POINTS;
   const showWarp = selected && warpMode && !layer.locked;
 
-  return <div ref={frameRef} style={style} className={`absolute overflow-visible ${layer.locked ? "cursor-not-allowed" : "cursor-grab active:cursor-grabbing"}`} onPointerDown={beginDrag} onPointerMove={moveDrag} onPointerUp={stopDrag} onPointerCancel={stopDrag} onClick={(event) => { event.stopPropagation(); onSelect(); }} aria-label={`Слой ${garment.name}`}>
+  return <div ref={frameRef} style={{ ...style, touchAction: layer.locked ? "pan-y" : "none" }} className={`absolute overflow-visible ${layer.locked ? "cursor-not-allowed" : "cursor-grab active:cursor-grabbing"}`} onPointerDown={beginDrag} onPointerMove={moveDrag} onPointerUp={stopDrag} onPointerCancel={stopDrag} onClick={(event) => { event.stopPropagation(); onSelect(); }} aria-label={`Слой ${garment.name}`}>
     {selected && <span className={`pointer-events-none absolute inset-[-8px] border ${showWarp ? "border-[#28614e] border-dashed" : "border-[#28614e]/70"}`} />}
     {imageUrl && <img ref={imageRef} src={imageUrl} alt={garment.name} draggable={false} onLoad={() => setReady(true)} className={`pointer-events-none absolute inset-0 h-full w-full select-none object-fill ${showWarp ? "opacity-0" : ""}`} />}
     {showWarp && <canvas ref={canvasRef} width={CANVAS_SIZE} height={CANVAS_SIZE} className="pointer-events-none absolute h-[170%] w-[170%] max-w-none" style={{ left: "-35%", top: "-35%" }} />}
-    {showWarp && points.map((point, index) => <button type="button" key={`${layer.id}-${index}`} onPointerDown={(event) => { event.stopPropagation(); onInteractionStart(); event.currentTarget.setPointerCapture(event.pointerId); movePoint(index, event); }} onPointerMove={(event) => event.currentTarget.hasPointerCapture(event.pointerId) && movePoint(index, event)} onPointerUp={(event) => event.currentTarget.releasePointerCapture(event.pointerId)} className="warp-point absolute z-20 grid h-6 w-6 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border-2 border-white bg-[#28614e] shadow-[0_3px_10px_rgba(30,37,34,0.28)]" style={{ left: `${point.x * 100}%`, top: `${point.y * 100}%` }} aria-label={`Контрольная точка ${index + 1} слоя ${garment.name}`}><span className="h-1.5 w-1.5 rounded-full bg-white" /></button>)}
+    {showWarp && points.map((point, index) => <button type="button" key={`${layer.id}-${index}`} onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); onInteractionStart(); event.currentTarget.setPointerCapture(event.pointerId); movePoint(index, event); }} onPointerMove={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) { event.preventDefault(); movePoint(index, event); } }} onPointerUp={(event) => event.currentTarget.releasePointerCapture(event.pointerId)} className="warp-point absolute z-20 grid h-6 w-6 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border-2 border-white bg-[#28614e] shadow-[0_3px_10px_rgba(30,37,34,0.28)]" style={{ left: `${point.x * 100}%`, top: `${point.y * 100}%`, touchAction: "none" }} aria-label={`Контрольная точка ${index + 1} слоя ${garment.name}`}><span className="h-1.5 w-1.5 rounded-full bg-white" /></button>)}
   </div>;
 }
 
@@ -159,7 +161,7 @@ export default function FlatStackStage({ layers, garments, selectedLayerId, warp
   const handleWheel = (event: WheelEvent<HTMLDivElement>) => { event.preventDefault(); event.stopPropagation(); changeZoom(event.deltaY > 0 ? -0.08 : 0.08); };
   const guideOptions: Array<{ value: LookboardGuide; icon: typeof Grid3X3; label: string }> = [{ value: "grid", icon: Grid3X3, label: "Сетка" }, { value: "quiet", icon: Focus, label: "Чистое полотно" }, { value: "measure", icon: Ruler, label: "Линейки" }];
 
-  return <div ref={stageRef} className={`flat-stack-stage lookboard-stage relative h-full w-full overflow-hidden ${isDark ? "bg-[#101713]" : "bg-[#efede7]"}`} data-guide={guide} aria-label="2D-доска образа" onWheel={handleWheel} onPointerDown={() => onSelect(undefined)}>
+  return <div ref={stageRef} className={`flat-stack-stage lookboard-stage relative h-full w-full overflow-hidden ${isDark ? "bg-[#101713]" : "bg-[#efede7]"}`} style={{ touchAction: "pan-y" }} data-guide={guide} aria-label="2D-доска образа" onWheel={handleWheel} onPointerDown={() => onSelect(undefined)}>
     <div className="absolute right-5 top-5 z-40 flex items-center gap-1 rounded-full border border-current/15 bg-background/85 p-1 shadow-sm backdrop-blur-sm">
       <button type="button" onClick={() => changeZoom(-0.12)} className="grid h-8 w-8 place-items-center rounded-full text-foreground/70 transition-colors hover:bg-accent" aria-label="Уменьшить масштаб"><Minus className="h-3.5 w-3.5" /></button>
       <button type="button" onClick={() => onZoomChange(1)} className="min-w-14 px-1 font-mono text-[10px] font-medium tracking-[0.06em] text-foreground/75" aria-label="Сбросить масштаб">{Math.round(zoom * 100)}%</button>
