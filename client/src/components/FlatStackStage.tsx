@@ -12,9 +12,9 @@ interface FlatStackStageProps {
 }
 
 const layerPosition: Record<GarmentCategory, { x: number; y: number; width: number; height: number }> = {
-  top: { x: 50, y: 48, width: 58, height: 58 },
-  bottom: { x: 51, y: 57, width: 50, height: 62 },
-  outerwear: { x: 49, y: 46, width: 66, height: 66 },
+  top: { x: 50, y: 41, width: 58, height: 48 },
+  bottom: { x: 51, y: 66, width: 48, height: 55 },
+  outerwear: { x: 49, y: 42, width: 66, height: 55 },
   shoes: { x: 50, y: 81, width: 58, height: 20 },
   accessory: { x: 52, y: 28, width: 38, height: 38 },
 };

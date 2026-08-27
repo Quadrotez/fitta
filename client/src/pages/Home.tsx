@@ -1,22 +1,24 @@
 /**
  * Style: «Тихий ателье» — асимметричная личная примерочная, спокойная палитра, швейные метки.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Archive,
-  ArrowUpRight,
-  CircleHelp,
+  Download,
+  FileUp,
   FolderArchive,
   Layers3,
   Loader2,
   Maximize2,
+  Minimize2,
   Pencil,
   Plus,
   RotateCcw,
   Save,
   Shirt,
   SlidersHorizontal,
-  Sparkles,
+  Moon,
+  Sun,
   Trash2,
   Upload,
   X,
@@ -25,6 +27,7 @@ import { toast } from "sonner";
 import TryOnStage from "@/components/TryOnStage";
 import FlatStackStage from "@/components/FlatStackStage";
 import GarmentPreview from "@/components/GarmentPreview";
+import { useTheme } from "@/contexts/ThemeContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
@@ -47,7 +50,28 @@ const formatDate = (date: string) =>
     new Date(date),
   );
 
+const imageToDataUrl = (image: string | Blob) => {
+  if (typeof image === "string") return Promise.resolve(image);
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error("Не удалось подготовить изображение для экспорта."));
+    reader.readAsDataURL(image);
+  });
+};
+
+const dataUrlToBlob = async (dataUrl: string) => (await fetch(dataUrl)).blob();
+
+type LookExport = {
+  format: "fitta-look";
+  version: 1;
+  exportedAt: string;
+  look: Pick<LookPreset, "name" | "createdAt">;
+  garments: Array<Omit<Garment, "id" | "image"> & { image: string }>;
+};
+
 export default function Home() {
+  const { theme, toggleTheme } = useTheme();
   const [garments, setGarments] = useState<Garment[]>([]);
   const [looks, setLooks] = useState<LookPreset[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<GarmentCategory>("top");
@@ -58,6 +82,9 @@ export default function Home() {
   const [sceneKey, setSceneKey] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [presetName, setPresetName] = useState("");
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const stageFrameRef = useRef<HTMLDivElement>(null);
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -70,6 +97,12 @@ export default function Home() {
       setLooks(storedLooks);
     });
     return () => { isMounted = false; };
+  }, []);
+
+  useEffect(() => {
+    const updateFullscreen = () => setIsFullscreen(document.fullscreenElement === stageFrameRef.current);
+    document.addEventListener("fullscreenchange", updateFullscreen);
+    return () => document.removeEventListener("fullscreenchange", updateFullscreen);
   }, []);
 
   const activeGarments = useMemo(() => {
@@ -129,6 +162,7 @@ export default function Home() {
 
   const selectGarment = (garment: Garment) => {
     setSelectedIds((current) => ({ ...current, [garment.category]: garment.id }));
+    setSelectedCategory(garment.category);
   };
 
   const removeGarment = async (garment: Garment) => {
@@ -182,9 +216,72 @@ export default function Home() {
     }
   };
 
+  const exportLook = async (look: Pick<LookPreset, "name" | "createdAt" | "garmentIds">) => {
+    const items = look.garmentIds.map((id) => garments.find((garment) => garment.id === id)).filter((garment): garment is Garment => Boolean(garment));
+    if (!items.length) {
+      toast.error("В этом образе нет доступных вещей для экспорта.");
+      return;
+    }
+    try {
+      const payload: LookExport = {
+        format: "fitta-look",
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        look: { name: look.name, createdAt: look.createdAt },
+        garments: await Promise.all(items.map(async ({ id: _id, image, ...garment }) => ({ ...garment, image: await imageToDataUrl(image) }))),
+      };
+      const file = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(file);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${look.name.toLowerCase().replace(/[^a-zа-яё0-9]+/gi, "-").replace(/^-|-$/g, "") || "fitta-look"}.fitta.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+      toast.success("Файл образа скачан.");
+    } catch {
+      toast.error("Не удалось подготовить файл образа.");
+    }
+  };
+
+  const exportCurrentLook = () => {
+    const garmentIds = Object.values(selectedIds).filter(Boolean) as string[];
+    void exportLook({ name: presetName.trim() || "Мой образ", createdAt: new Date().toISOString(), garmentIds });
+  };
+
+  const importLook = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    try {
+      const payload = JSON.parse(await file.text()) as LookExport;
+      if (payload.format !== "fitta-look" || payload.version !== 1 || !Array.isArray(payload.garments) || !payload.garments.length) throw new Error("unsupported file");
+      const imported = await Promise.all(payload.garments.map(async (garment) => ({ ...garment, id: crypto.randomUUID(), image: await dataUrlToBlob(garment.image), createdAt: new Date().toISOString() })));
+      const nextGarments = [...imported, ...garments];
+      const importedLook: LookPreset = { id: crypto.randomUUID(), name: payload.look?.name ? `${payload.look.name} · импорт` : "Импортированный образ", garmentIds: imported.map((garment) => garment.id), createdAt: new Date().toISOString() };
+      const nextLooks = [importedLook, ...looks].slice(0, 12);
+      const [garmentsSaved, looksSaved] = await Promise.all([saveToStorage(WARDROBE_STORAGE_KEY, nextGarments), saveToStorage(LOOKS_STORAGE_KEY, nextLooks)]);
+      if (!garmentsSaved || !looksSaved) throw new Error("storage failure");
+      setGarments(nextGarments);
+      setLooks(nextLooks);
+      setSelectedIds(Object.fromEntries(imported.map((garment) => [garment.category, garment.id])));
+      toast.success("Образ импортирован в гардероб.");
+    } catch {
+      toast.error("Не удалось прочитать файл образа Fitta.");
+    }
+  };
+
   const resetScene = () => {
     setSceneKey((key) => key + 1);
     toast.message("Положение модели сброшено.");
+  };
+
+  const toggleFullscreen = async () => {
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else await stageFrameRef.current?.requestFullscreen();
+    } catch {
+      toast.error("Полноэкранный режим недоступен в этом браузере.");
+    }
   };
 
   const updateFit = (axis: "width" | "height", value: number) => {
@@ -234,19 +331,14 @@ export default function Home() {
           </span>
         </a>
 
-        <div className="hidden items-center gap-2 md:flex">
-          <span className="flex items-center gap-2 rounded-full bg-[#e9eee9] px-3 py-1.5 font-mono text-[10px] font-medium tracking-[0.09em] text-[#28614e]">
-            <span className="h-1.5 w-1.5 rounded-full bg-[#28614e]" />
-            LOCAL ONLY
-          </span>
-          <Button variant="ghost" className="h-9 gap-2 rounded-full px-3 text-xs font-medium text-[#4d5751] hover:bg-[#ebeae5] hover:text-[#1e2522]">
-            <CircleHelp className="h-4 w-4" />
-            Как это работает
-          </Button>
+        <div className="flex items-center gap-2">
+          <button onClick={toggleTheme} className="flex h-10 w-10 items-center justify-center rounded-full border border-[#d5d7d1] bg-[#fbfaf7]/80 text-[#445047] transition-colors hover:bg-white" aria-label={theme === "light" ? "Включить тёмную тему" : "Включить светлую тему"} title={theme === "light" ? "Тёмная тема" : "Светлая тема"}>
+            {theme === "light" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+          </button>
         </div>
       </header>
 
-      <main className="relative grid lg:min-h-[calc(100vh-76px)] lg:grid-cols-[340px_minmax(0,1fr)]">
+      <main className="relative grid lg:min-h-[calc(100vh-76px)] lg:grid-cols-[300px_minmax(0,1fr)]">
         <aside className="relative z-10 border-b border-[#d9d8d1] bg-[#f8f7f3] lg:border-r lg:border-b-0">
           <div className="flex h-full flex-col px-5 py-6 sm:px-8 lg:px-6 xl:px-8">
             <div className="mb-5 flex items-end justify-between">
@@ -331,9 +423,13 @@ export default function Home() {
             </div>
 
             <div className="mt-6 border-t border-[#dfded8] pt-5">
-              <div className="mb-3 flex items-center justify-between">
+              <div className="mb-3 flex items-center justify-between gap-2">
                 <p className="font-mono text-[10px] font-medium tracking-[0.13em] text-[#767b74]">02 — ОБРАЗЫ</p>
-                <span className="font-mono text-[10px] text-[#767b74]">{looks.length}/12</span>
+                <div className="flex items-center gap-2">
+                  <input ref={importInputRef} type="file" accept="application/json,.json" onChange={importLook} className="hidden" aria-label="Импортировать образ Fitta" />
+                  <button onClick={() => importInputRef.current?.click()} className="flex h-7 items-center gap-1 rounded-md px-1.5 font-mono text-[8px] font-medium tracking-[0.04em] text-[#556157] transition-colors hover:bg-[#eaf0eb] hover:text-[#28614e]" title="Импортировать образ"><FileUp className="h-3.5 w-3.5" /> ИМПОРТ</button>
+                  <span className="font-mono text-[10px] text-[#767b74]">{looks.length}/12</span>
+                </div>
               </div>
               <div className="space-y-1.5">
                 {looks.slice(0, 3).map((look) => (
@@ -345,18 +441,16 @@ export default function Home() {
                         <span className="font-mono text-[8px] tracking-[0.08em] text-[#848983]">{look.garmentIds.length} ВЕЩ. · {formatDate(look.createdAt).toUpperCase()}</span>
                       </span>
                     </button>
-                    <button onClick={() => deleteLook(look.id)} className="flex h-7 w-7 items-center justify-center rounded-full text-[#9da19c] opacity-100 hover:bg-[#f4e8e5] hover:text-[#a94f40] lg:opacity-0 lg:group-hover:opacity-100" aria-label={`Удалить образ ${look.name}`}>
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
+                    <div className="flex items-center opacity-100 lg:opacity-0 lg:group-hover:opacity-100">
+                      <button onClick={() => void exportLook(look)} className="flex h-7 w-7 items-center justify-center rounded-full text-[#708276] hover:bg-[#eaf0eb] hover:text-[#28614e]" aria-label={`Экспортировать образ ${look.name}`}><Download className="h-3.5 w-3.5" /></button>
+                      <button onClick={() => deleteLook(look.id)} className="flex h-7 w-7 items-center justify-center rounded-full text-[#9da19c] hover:bg-[#f4e8e5] hover:text-[#a94f40]" aria-label={`Удалить образ ${look.name}`}><Trash2 className="h-3.5 w-3.5" /></button>
+                    </div>
                   </div>
                 ))}
                 {!looks.length && <p className="px-2 text-xs leading-5 text-[#7b817b]">Собери первый образ — он появится здесь.</p>}
               </div>
             </div>
 
-            <p className="mt-auto hidden border-t border-[#dfded8] pt-4 font-mono text-[9px] leading-4 tracking-[0.035em] text-[#838982] lg:block">
-              ФОТО И ПРЕСЕТЫ ХРАНЯТСЯ ТОЛЬКО В ЭТОМ БРАУЗЕРЕ.
-            </p>
           </div>
         </aside>
 
@@ -372,7 +466,7 @@ export default function Home() {
                 </div>
                 <h2 className="text-[clamp(28px,3vw,42px)] font-bold leading-none tracking-[-0.065em]">Сцена образа <span className="font-mono text-sm font-medium tracking-normal text-[#6f7870]">/ 01</span></h2>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2 sm:justify-end">
                 <div className="flex rounded-full border border-[#d5d7d1] bg-[#fbfaf7]/80 p-1">
                   <button onClick={() => setViewMode("mannequin")} className={`rounded-full px-3 py-1.5 font-mono text-[9px] font-medium tracking-[0.06em] transition-colors ${viewMode === "mannequin" ? "bg-[#28614e] text-white" : "text-[#6d766e] hover:text-[#28614e]"}`}>МАНЕКЕН</button>
                   <button onClick={() => setViewMode("flat")} className={`flex items-center gap-1 rounded-full px-3 py-1.5 font-mono text-[9px] font-medium tracking-[0.06em] transition-colors ${viewMode === "flat" ? "bg-[#28614e] text-white" : "text-[#6d766e] hover:text-[#28614e]"}`}><Layers3 className="h-3 w-3" /> 2D</button>
@@ -385,22 +479,15 @@ export default function Home() {
                   <RotateCcw className="h-3.5 w-3.5" />
                   Сбросить ракурс
                 </Button>
-                <button className="flex h-10 w-10 items-center justify-center rounded-full border border-[#d5d7d1] bg-[#fbfaf7]/80 text-[#445047] transition-colors hover:bg-white" aria-label="Развернуть сцену">
+                <button onClick={() => void toggleFullscreen()} className="flex h-10 w-10 items-center justify-center rounded-full border border-[#d5d7d1] bg-[#fbfaf7]/80 text-[#445047] transition-colors hover:bg-white" aria-label={isFullscreen ? "Закрыть полноэкранный режим" : "Развернуть сцену"} title={isFullscreen ? "Закрыть полноэкранный режим" : "Развернуть сцену"}>
                   <Maximize2 className="h-4 w-4" />
                 </button>
               </div>
             </div>
 
-            <div className="relative grid flex-1 gap-5 xl:grid-cols-[minmax(0,1fr)_260px]">
-              <div className="canvas-frame relative min-h-[500px] overflow-hidden rounded-[16px] border border-[#cfd3cc] bg-[#f1efe9] shadow-[0_12px_28px_rgba(44,54,48,0.06)]">
-                <div className="absolute left-5 top-5 z-[1] flex items-center gap-2 border-b border-[#a5b4a7] bg-[#f8f7f2]/85 px-1 py-1.5 backdrop-blur-sm">
-                  <span className="h-1.5 w-1.5 rounded-full bg-[#28614e]" />
-                  <span className="font-mono text-[9px] font-medium tracking-[0.12em] text-[#56635a]">{viewMode === "mannequin" ? "МАКЕТ ЧЕЛОВЕКА · BETA" : "2D СТЕК · БЕЗ МАНЕКЕНА"}</span>
-                </div>
-                <div className="absolute bottom-5 left-5 z-[1] max-w-[220px] border-l-2 border-[#28614e] bg-[#f8f7f2]/82 p-3.5 backdrop-blur-sm">
-                  <p className="font-mono text-[9px] font-medium tracking-[0.1em] text-[#28614e]">ПРЕДПРОСМОТР СЛОЁВ</p>
-                  <p className="mt-1 text-xs leading-5 text-[#5d665e]">{viewMode === "mannequin" ? "Спокойный силуэт для быстрой оценки образа. Точная посадка — в режиме редактирования." : "Вещи складываются поверх друг друга на чистом поле — без анатомии и лишней логики."}</p>
-                </div>
+            <div className="relative grid flex-1 gap-5 xl:grid-cols-[minmax(0,1fr)_230px]">
+              <div ref={stageFrameRef} className="canvas-frame relative min-h-[500px] overflow-hidden rounded-[16px] border border-[#cfd3cc] bg-[#f1efe9] shadow-[0_12px_28px_rgba(44,54,48,0.06)]">
+                {isFullscreen && <button onClick={() => void toggleFullscreen()} className="absolute right-5 top-5 z-30 flex h-10 w-10 items-center justify-center rounded-full border border-[#d5d7d1] bg-[#fbfaf7]/90 text-[#445047] shadow-sm backdrop-blur-sm" aria-label="Закрыть полноэкранный режим" title="Закрыть полноэкранный режим"><Minimize2 className="h-4 w-4" /></button>}
                 {viewMode === "mannequin" ? <TryOnStage key={sceneKey} activeGarments={activeGarments} bodyMode={bodyMode} editingGarmentId={isEditing ? fittingGarment?.id : undefined} onWarpChange={updateWarp} /> : <FlatStackStage key={sceneKey} activeGarments={activeGarments} editingGarmentId={isEditing ? fittingGarment?.id : undefined} onWarpChange={updateWarp} />}
               </div>
 
@@ -450,9 +537,7 @@ export default function Home() {
                         <RotateCcw className="h-3 w-3" /> СБРОСИТЬ ПОДГОНКУ
                       </button>
                     </div>
-                  ) : (
-                    <p className="text-xs leading-5 text-[#747a73]">Добавь вещь или выбери её в библиотеке. Здесь можно вручную растянуть слой по форме манекена.</p>
-                  )}
+                  ) : null}
                 </div>
 
                 <div className="paper-tag rounded-[13px] border border-[#d8d8d1] bg-[#fbfaf7]/80 p-5">
@@ -465,8 +550,10 @@ export default function Home() {
                       const garment = activeGarments[category];
                       return (
                         <div key={category} className={`flex items-center gap-2.5 rounded-xl px-2.5 py-2 ${garment ? "bg-white shadow-[0_2px_8px_rgba(39,50,43,0.03)]" : "opacity-55"}`}>
-                          <span className={`h-2 w-2 rounded-full ${categoryMeta[category].dot}`} />
-                          <span className="min-w-0 flex-1 truncate text-xs font-semibold">{garment?.name || categoryMeta[category].label}</span>
+                          <button disabled={!garment} onClick={() => garment && selectGarment(garment)} className="flex min-w-0 flex-1 items-center gap-2.5 text-left disabled:cursor-default">
+                            <span className={`h-2 w-2 rounded-full ${categoryMeta[category].dot}`} />
+                            <span className="min-w-0 flex-1 truncate text-xs font-semibold">{garment?.name || categoryMeta[category].label}</span>
+                          </button>
                           {garment ? <button onClick={() => setSelectedIds((current) => { const next = { ...current }; delete next[category]; return next; })} className="rounded-md p-0.5 text-[#8c938d] hover:bg-[#f2e5e1] hover:text-[#a94f40]" aria-label={`Убрать ${garment.name} из образа`}><X className="h-3.5 w-3.5" /></button> : <Plus className="h-3.5 w-3.5 text-[#959a94]" />}
                         </div>
                       );
@@ -474,17 +561,6 @@ export default function Home() {
                   </div>
                 </div>
 
-                <div className="paper-tag mt-auto hidden overflow-hidden rounded-[13px] border border-[#d8d8d1] bg-[#fbfaf7] xl:block">
-                  <div className="relative h-24 overflow-hidden bg-[#dce4db]">
-                    <div className="absolute inset-y-0 left-[18%] w-16 -rotate-[18deg] bg-[#f4f0e6]/75" />
-                    <div className="absolute inset-y-0 left-[43%] w-9 rotate-[22deg] bg-[#28614e]/18" />
-                    <div className="absolute inset-x-0 bottom-5 border-t border-dashed border-[#28614e]/30" />
-                  </div>
-                  <div className="p-4">
-                    <p className="font-mono text-[9px] font-medium tracking-[0.11em] text-[#28614e]">СОВЕТ ПО ЗАГРУЗКЕ</p>
-                    <p className="mt-1 text-xs leading-5 text-[#626b63]">Лучше всего работают вещи на ровном, светлом фоне.</p>
-                  </div>
-                </div>
               </div>
             </div>
 
@@ -493,16 +569,13 @@ export default function Home() {
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#e3ebe4] text-[#28614e]"><Archive className="h-4 w-4" /></span>
                 <Input value={presetName} onChange={(event) => setPresetName(event.target.value)} maxLength={38} placeholder="Название образа (необязательно)" className="h-10 border-0 bg-transparent px-0 text-sm font-semibold shadow-none placeholder:text-[#949992] focus-visible:ring-0" aria-label="Название сохраняемого образа" />
               </div>
+              <Button onClick={exportCurrentLook} disabled={!selectedCount} variant="outline" className="h-11 rounded-full border-[#b5c6b8] bg-transparent px-4 text-xs font-bold text-[#28614e] hover:bg-[#eaf0eb] disabled:opacity-40"><Download className="mr-2 h-4 w-4" />Экспорт</Button>
               <Button onClick={saveLook} className="h-11 rounded-full bg-[#28614e] px-5 text-xs font-bold text-white shadow-[0_8px_18px_rgba(40,97,78,0.18)] transition-all hover:-translate-y-0.5 hover:bg-[#1f4f3f] active:scale-[0.97]">
                 <Save className="mr-2 h-4 w-4" />
                 Сохранить образ
               </Button>
             </div>
 
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 font-mono text-[9px] tracking-[0.065em] text-[#798078]">
-              <span className="flex items-center gap-1.5"><Sparkles className="h-3.5 w-3.5 text-[#28614e]" /> ПРИМЕРКА РАБОТАЕТ ЛОКАЛЬНО</span>
-              <span className="flex items-center gap-1">КОЛЁСИКО — МАСШТАБ · РЕГУЛЯТОРЫ — РУЧНАЯ ПОДГОНКА <ArrowUpRight className="h-3 w-3" /></span>
-            </div>
           </div>
         </section>
       </main>

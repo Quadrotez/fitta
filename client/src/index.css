@@ -4,6 +4,8 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+@custom-variant dark (&:is(.dark *));
+
 @theme inline {
   --font-sans: "DM Sans", Arial, sans-serif;
   --font-mono: "DM Mono", monospace;
@@ -66,6 +68,8 @@ button:focus-visible, input:focus-visible { outline: 2px solid #28614e; outline-
 .warp-point { touch-action: none; cursor: grab; }
 .warp-point:active { cursor: grabbing; transform: translate(-50%, -50%) scale(0.92); }
 .paper-tag {
+  border-radius: 0.55rem !important;
+  box-shadow: 3px 3px 0 rgba(40, 97, 78, 0.045);
   background-image: linear-gradient(90deg, rgba(40, 97, 78, 0.26) 0 22px, transparent 22px), radial-gradient(circle at 12px 12px, rgba(40, 97, 78, 0.35) 0 1px, transparent 1.5px);
   background-size: 100% 1px, 100% 100%;
   background-repeat: no-repeat;
@@ -82,6 +86,68 @@ button:focus-visible, input:focus-visible { outline: 2px solid #28614e; outline-
 .brand-mark img { position: relative; z-index: 1; }
 .scrollbar-soft::-webkit-scrollbar { width: 5px; }
 .scrollbar-soft::-webkit-scrollbar-thumb { border-radius: 99px; background: #cdd1ca; }
+
+.canvas-frame:fullscreen {
+  width: 100vw;
+  height: 100vh;
+  border: 0;
+  border-radius: 0;
+  background: #f1efe9;
+}
+
+.atelier-shell .rounded-2xl { border-radius: 0.7rem; }
+.atelier-shell .rounded-xl { border-radius: 0.45rem; }
+.atelier-shell .canvas-frame { border-radius: 0.55rem; }
+.atelier-shell .canvas-frame::before {
+  content: "FITTA / FORM STUDY";
+  position: absolute;
+  left: 1.25rem;
+  bottom: 1rem;
+  z-index: 15;
+  color: rgba(65, 78, 69, 0.38);
+  font-family: "DM Mono", monospace;
+  font-size: 8px;
+  letter-spacing: 0.14em;
+  pointer-events: none;
+}
+
+.dark html,
+.dark body {
+  background: #131917;
+  color: #e8eee9;
+}
+.dark .atelier-shell { background-color: #131917; background-image: radial-gradient(circle at 75% 20%, rgba(105, 159, 133, 0.1), transparent 23rem); color: #e8eee9; }
+.dark .atelier-shell header,
+.dark .atelier-shell aside { background-color: #18201d !important; border-color: #334039 !important; }
+.dark .atelier-shell .canvas-frame { background-color: #202924 !important; border-color: #3b4a42 !important; box-shadow: 0 12px 30px rgba(0,0,0,0.22); }
+.dark .atelier-shell .paper-tag,
+.dark .atelier-shell .category-tab,
+.dark .atelier-shell .upload-surface,
+.dark .atelier-shell .bg-white,
+.dark .atelier-shell .bg-\[\#fbfaf7\],
+.dark .atelier-shell .bg-\[\#fdfcf9\],
+.dark .atelier-shell .bg-\[\#f8f7f3\],
+.dark .atelier-shell .bg-\[\#f8f7f2\] { background-color: #202924 !important; border-color: #3b4a42 !important; }
+.dark .atelier-shell .bg-\[\#edf3ee\],
+.dark .atelier-shell .bg-\[\#eaf0eb\],
+.dark .atelier-shell .bg-\[\#e3ebe4\] { background-color: #25342c !important; border-color: #496050 !important; }
+.dark .atelier-shell .text-\[\#1e2522\],
+.dark .atelier-shell .text-\[\#445047\],
+.dark .atelier-shell .text-\[\#4d5751\],
+.dark .atelier-shell .text-\[\#5d665e\],
+.dark .atelier-shell .text-\[\#626b63\] { color: #edf2ee !important; }
+.dark .atelier-shell .text-\[\#747a73\],
+.dark .atelier-shell .text-\[\#747b74\],
+.dark .atelier-shell .text-\[\#767b74\],
+.dark .atelier-shell .text-\[\#7b817b\],
+.dark .atelier-shell .text-\[\#838982\] { color: #aebbb1 !important; }
+.dark .atelier-shell .border-\[\#d9d8d1\],
+.dark .atelier-shell .border-\[\#d8d8d1\],
+.dark .atelier-shell .border-\[\#d5d7d1\],
+.dark .atelier-shell .border-\[\#dfded8\] { border-color: #334039 !important; }
+.dark .canvas-frame::after { background-image: linear-gradient(rgba(167, 192, 176, 0.055) 1px, transparent 1px), linear-gradient(90deg, rgba(167, 192, 176, 0.055) 1px, transparent 1px); }
+.dark .canvas-frame:fullscreen { background: #202924; }
+.dark .canvas-frame::before { color: rgba(205, 220, 209, 0.38); }
 
 @media (prefers-reduced-motion: no-preference) {
   .category-tab, .upload-surface, button { transition-timing-function: cubic-bezier(0.23, 1, 0.32, 1); transition-duration: 180ms; }
